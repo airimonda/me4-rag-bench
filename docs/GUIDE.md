@@ -48,7 +48,15 @@ Your LLM client should use `http://127.0.0.1:8790/v1` as its base URL. That is t
 export OPENROUTER_API_KEY=your-key-here
 ```
 
-If you were given a separate judge key, also set `CRB_JUDGE_KEY`. Keys are never written to any file.
+If you were given a separate judge key, also set `CRB_JUDGE_KEY`. `crb` never writes keys to its output files.
+
+To make the key available to runs started from your laptop over SSH (where shell profiles are often skipped), also store it in `~/.config/crb/env` on the Pi:
+
+```bash
+mkdir -p ~/.config/crb
+echo 'OPENROUTER_API_KEY=your-key-here' > ~/.config/crb/env
+chmod 600 ~/.config/crb/env
+```
 
 ## 5. Check
 
@@ -113,15 +121,21 @@ Use the run folder that was printed. Questions already answered are skipped.
 
 ## 9. Read the report
 
-On the Pi, `crb` prints the path of `report.html`. To open it from your laptop, on the Pi run:
+The easiest way is to start the run from your laptop. With `crb` installed on the laptop (see the README, step 2):
 
 ```bash
-crb serve
+crb remote pi@raspberrypi.local --official --student 12
 ```
 
-It prints a link like `http://192.168.1.42:8302`. Open it in the browser on your laptop. Laptop and Pi must be on the same network (or Tailscale). Press Ctrl-C on the Pi when you are done. The server is read-only.
+This starts the run on the Pi, shows its progress, and when it finishes copies the run to `~/crb-runs/` on the laptop and opens `report.html` in your browser. If you close the laptop, the run continues on the Pi; collect it later with:
 
-You can also copy the file: `scp pi@raspberrypi.local:~/me4-rag-bench/runs/12/*/report.html .`
+```bash
+crb pull pi@raspberrypi.local --wait
+```
+
+If you ran on the Pi directly, `crb pull pi@raspberrypi.local` on the laptop copies the newest run and opens it.
+
+Another option is `crb serve` on the Pi, which prints a link like `http://192.168.1.42:8302`. Some laptops cannot open addresses on the local network (for example because of macOS's Local Network permission); `crb pull` works in that case.
 
 In the report:
 

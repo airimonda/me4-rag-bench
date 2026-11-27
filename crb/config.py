@@ -48,6 +48,30 @@ def judge_key() -> str | None:
     return os.environ.get("CRB_JUDGE_KEY") or os.environ.get("OPENROUTER_API_KEY") or None
 
 
+def load_env_files() -> list[Path]:
+    """Read KEY=VALUE lines from ~/.config/crb/env and ./.env into the environment.
+
+    Variables already set win. This lets a run started over SSH (where shell profiles are often
+    skipped) still find OPENROUTER_API_KEY. Returns the files that were read.
+    """
+    read = []
+    for path in (config_dir() / "env", Path(".env")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        read.append(path)
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.removeprefix("export ").partition("=")
+            key, val = key.strip(), val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    return read
+
+
 def load_last() -> dict:
     try:
         data = json.loads((config_dir() / "last.json").read_text(encoding="utf-8"))

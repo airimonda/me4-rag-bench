@@ -61,7 +61,47 @@ def build_parser() -> argparse.ArgumentParser:
 
     b = sub.add_parser("baseline", help="start the reference adapter on :8000 (anything after -- goes to it)")
     b.add_argument("extra", nargs=argparse.REMAINDER)
+
+    rm = sub.add_parser("remote", help="(on your laptop) run on the Pi over SSH, then copy the run here and open the report")
+    rm.add_argument("host", help="the Pi, as you would type it for ssh (e.g. abnunez@192.168.1.80 or watsonpi)")
+    _add_mode_flags(rm)
+    rm.add_argument("--student", help="your student number")
+    rm.add_argument("--adapter", help="adapter URL as seen from the Pi")
+    rm.add_argument("--no-judge", action="store_true")
+    _add_remote_flags(rm)
+
+    pl = sub.add_parser("pull", help="(on your laptop) copy a run from the Pi and open its report")
+    pl.add_argument("host", help="the Pi, as you would type it for ssh")
+    pl.add_argument("--run", help="run folder on the Pi (default: the newest)")
+    pl.add_argument("--wait", action="store_true", help="wait for the run that is going on now to finish first")
+    _add_remote_flags(pl)
     return p
+
+
+def _add_remote_flags(p: argparse.ArgumentParser) -> None:
+    from .remote import DEFAULT_REMOTE_DIR
+    p.add_argument("--dir", default=DEFAULT_REMOTE_DIR, help=f"repo folder on the Pi (default {DEFAULT_REMOTE_DIR})")
+    p.add_argument("--to", help="where to put runs on this computer (default ~/crb-runs)")
+    p.add_argument("--no-open", action="store_true", help="do not open the report in a browser")
+
+
+def _cmd_remote(args) -> int:
+    from . import remote
+    run_args = ["--" + _mode_of(args)]
+    if args.student:
+        run_args += ["--student", args.student]
+    if args.adapter:
+        run_args += ["--adapter", args.adapter]
+    if args.no_judge:
+        run_args.append("--no-judge")
+    return remote.remote_run(args.host, run_args, args.dir, Path(args.to).expanduser() if args.to else None,
+                             not args.no_open)
+
+
+def _cmd_pull(args) -> int:
+    from . import remote
+    return remote.pull(args.host, args.dir, args.run, args.wait,
+                       Path(args.to).expanduser() if args.to else None, not args.no_open)
 
 
 def _cmd_check(args) -> int:
@@ -159,6 +199,7 @@ def _cmd_baseline(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    config.load_env_files()
     try:
         if args.cmd is None:
             return _cmd_wizard()
@@ -169,7 +210,8 @@ def main(argv: list[str] | None = None) -> int:
             from . import serve
             return serve.serve(args.run_dir, args.port)
         return {"check": _cmd_check, "run": _cmd_run, "score": _cmd_score,
-                "report": _cmd_report, "baseline": _cmd_baseline}[args.cmd](args)
+                "report": _cmd_report, "baseline": _cmd_baseline,
+                "remote": _cmd_remote, "pull": _cmd_pull}[args.cmd](args)
     except KeyboardInterrupt:
         print("\nStopped.")
         return 130
