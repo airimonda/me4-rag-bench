@@ -4,6 +4,8 @@
 
 Each run reports four layers of answer quality, latency measured on the device, token cost, and device health (temperature, throttling, power, CPU and memory) sampled once per second. Results are expressed as a rank and as a position relative to the median of the published systems on the same data, metric and judge.
 
+> **Required before use:** your system must be wrapped in an *adapter*, a small HTTP server on the Pi that exposes four endpoints. The benchmark cannot run without it. See [Before you start](#before-you-start-an-adapter-is-required).
+
 ## Features
 
 - **Architecture-agnostic.** Any system that implements four HTTP endpoints can be evaluated, whether it uses text chunks, page images, tool-using agents, long context or a knowledge graph.
@@ -11,6 +13,64 @@ Each run reports four layers of answer quality, latency measured on the device, 
 - **Layered diagnosis.** Retrieval, generation with the correct pages, and the full pipeline are scored separately, and every question is attributed to the layer that failed.
 - **Measured on the device.** Latency, ingest time and resource use are recorded on the Pi itself; token use is counted by a local proxy rather than self-reported.
 - **Plug and play.** One install script, an interactive wizard, pre-flight checks, resumable runs and a self-contained HTML report.
+
+## Before you start: an adapter is required
+
+`crb` does not know how your system is built and does not import its code. It talks to your system only through an **adapter**: a small HTTP server that runs on the Pi next to your system and translates the benchmark's requests into calls to your own pipeline. **The benchmark cannot run until your adapter is working.** `crb check` fails with `cannot connect to the adapter` until it is.
+
+The adapter is a thin layer. It should call the same ingestion, retrieval and answering code your system already uses, with the same models and prompts you would use on demo day. Do not tune it for the benchmark questions. For an existing pipeline, writing the adapter typically takes one to two hours.
+
+### What the adapter must do
+
+It listens on `http://127.0.0.1:8000` (another address can be passed with `--adapter`) and implements four endpoints. All request and response bodies are JSON (UTF-8).
+
+| Endpoint | When the benchmark calls it | What the adapter receives | What it must return | What is measured |
+|---|---|---|---|---|
+| `GET /health` | Pre-flight and at the start of a run | – | `{"ok": true, "name": "...", "version": "..."}` | Name and version are shown in the report |
+| `POST /ingest` | Once per ViDoRe dataset, before any questions | `collection` and `dir`, a folder holding `<page_id>.md` (page text) and `<page_id>.png` (page image) for every page | `{"ok": true, "pages": N}` once the collection is indexed (up to 60 minutes) | Ingest time |
+| `POST /retrieve` | Layer 1, once per ViDoRe question | `collection`, `question`, `k` (10) | `{"pages": ["page_id", ...]}`, best first, or `{"pages": null}` if the system has no separate retrieval step | nDCG@10, Recall@10, retrieval latency |
+| `POST /answer` | Layers 2, 3 and 4, once per question | `question` and `mode` (see below) | A streamed answer, or `{"answer": "...", "cited": ["page_id", ...]}` | Accuracy, time to first token, total time, tokens |
+
+`/answer` is called in three modes, and the adapter must respect each one:
+
+| `mode` | Layer | Extra fields sent | Required behaviour |
+|---|---|---|---|
+| `e2e` | 3 | `collection` | Run your full pipeline: search your own index, then answer. |
+| `gold` | 2 | `context`: the correct pages, each with `page_id`, `markdown` and `image_path` | Do **not** search. Answer only from the pages given. |
+| `web` | 4 (CRAG) | `pages`: five local HTML files with their metadata; `query_time` | Answer only from those five pages. Do not access the internet. Say "I don't know" when the pages do not support an answer, and "invalid question" when the question has a false premise. |
+
+### Rules that affect your scores
+
+1. **Return page ids, not chunk ids.** A page id is the file name without its extension (for example `report_2023__p14`). If your index stores chunks, map each chunk back to its page and remove duplicates before returning.
+2. **Stream the answer** as server-sent events (`data: {"delta": "..."}` lines, then `data: {"done": true, "cited": [...]}`) or chunked plain text. With a non-streaming JSON reply, time to first token equals total time.
+3. **Keep answers short.** Judges compare against short reference answers; for CRAG a wrong answer scores −1 and "I don't know" scores 0.
+4. **Send LLM calls through the token proxy** (`http://127.0.0.1:8790/v1`, OpenAI-compatible) so that cost is measured. Your API key passes through unchanged. Without the proxy, cost is reported as "not measured".
+5. **Stay within the time limits:** 120 seconds per answer and 30 seconds per retrieval. A timeout or error counts as a failed answer; the run continues.
+6. **Keep the adapter running for the whole run** (for example in `tmux`). Questions are sent one at a time.
+
+### How to build it
+
+1. Copy the template: `cp examples/adapter_template.py my_adapter.py`. It runs as it is and returns placeholder answers, so the wiring can be tested before your code is connected.
+2. Fill in its three functions with calls to your system:
+   - `ingest(collection, directory)`: read the `.md` and/or `.png` files in `directory`, build your index, and return the number of pages.
+   - `retrieve(collection, question, k)`: search your index and return up to `k` page ids, best first (or `None` if you have no retriever).
+   - `answer(req)`: build the prompt for `req["mode"]` as described above, call your model, `yield` the answer text piece by piece, and `return` the cited page ids.
+3. Start it on the Pi: `python3 my_adapter.py --port 8000`.
+4. Test each endpoint by hand:
+
+   ```bash
+   curl http://127.0.0.1:8000/health
+   curl -X POST http://127.0.0.1:8000/ingest -H 'Content-Type: application/json' \
+     -d '{"collection":"vidore_v3_hr","dir":"'"$HOME"'/crb-data/packs/vidore_v3_hr/pages"}'
+   curl -X POST http://127.0.0.1:8000/retrieve -H 'Content-Type: application/json' \
+     -d '{"collection":"vidore_v3_hr","question":"What was the employment rate in 2023?","k":10}'
+   curl -N -X POST http://127.0.0.1:8000/answer -H 'Content-Type: application/json' \
+     -d '{"collection":"vidore_v3_hr","question":"What was the employment rate in 2023?","mode":"e2e"}'
+   ```
+
+5. Run `crb check`, then a practice run (`--smoke`) before the official run.
+
+The adapter can be written in any language; only the HTTP interface matters. `crb baseline` starts the reference adapter (`examples/baseline_adapter.py`, BM25 plus one model call), which is a complete working example. [docs/ADAPTER.md](docs/ADAPTER.md) gives the full request and response formats, a streaming example, and guidance for text-chunk, page-image, agent, long-context and graph-based systems.
 
 ## Requirements
 
@@ -52,14 +112,14 @@ pip install -e .
 
 Check that the laptop can reach the Pi: `ssh <user>@<pi-address>` should open a shell. Setting up an SSH key (`ssh-keygen`, then `ssh-copy-id <user>@<pi-address>`) avoids repeated password prompts.
 
-### Step 3. Start the system under test on the Pi
+### Step 3. Start your adapter on the Pi
 
-The system under test is an HTTP server on the Pi (default `http://127.0.0.1:8000`) that implements the interface in [docs/ADAPTER.md](docs/ADAPTER.md). Start it in a way that keeps it running after you log out, for example in `tmux`:
+This step requires the adapter described in [Before you start](#before-you-start-an-adapter-is-required). Start it in a way that keeps it running after you log out, for example in `tmux`:
 
 ```bash
 tmux new -s adapter             # on the Pi
 cd ~/me4-rag-bench && source .venv/bin/activate
-python3 your_adapter.py         # your system; or `crb baseline` for the reference system
+python3 my_adapter.py --port 8000   # your adapter; or `crb baseline` for the reference system
 # detach with Ctrl-b, then d
 ```
 
@@ -117,17 +177,6 @@ Use `tmux` for long runs so that a dropped SSH session does not stop the run. Th
 | `crb report RUN_DIR` | Rebuild `report.html` and `summary.md` from `results.json` |
 | `crb serve` | Serve the runs folder read-only over HTTP |
 | `crb fetch --dev` | Build a tiny offline dataset for development |
-
-## Adapter interface
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /health` | Identify the system |
-| `POST /ingest` | Index a collection of pages |
-| `POST /retrieve` | Return the top-k page identifiers for a question |
-| `POST /answer` | Answer a question; streaming (server-sent events or chunked text) or JSON |
-
-`/answer` is called in three modes: `e2e` (full pipeline), `gold` (correct pages supplied, retrieval bypassed) and `web` (CRAG, five supplied web pages). Request and response formats, examples and guidance for common architectures are in [docs/ADAPTER.md](docs/ADAPTER.md).
 
 ## Evaluation
 
