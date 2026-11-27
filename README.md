@@ -14,54 +14,109 @@ Each run reports four layers of answer quality, latency measured on the device, 
 
 ## Requirements
 
-- Raspberry Pi 4 (4 GB) or Raspberry Pi 5, 64-bit Raspberry Pi OS, Python 3.10 or later
-- About 2.5 GB of free disk space
-- An OpenRouter API key for the judges (`CRB_JUDGE_KEY` or `OPENROUTER_API_KEY`)
+- **Raspberry Pi:** Raspberry Pi 4 (4 GB) or Raspberry Pi 5, 64-bit Raspberry Pi OS, Python 3.10 or later, about 2.5 GB of free disk space
+- **Laptop (recommended):** macOS, Linux or Windows 10/11 with Python 3.10+ and the OpenSSH client, on a network from which `ssh` to the Pi works
+- **API key:** an OpenRouter key for the judges (`OPENROUTER_API_KEY` or `CRB_JUDGE_KEY`)
 
-macOS and Linux laptops are supported for development; device health metrics are then partly unavailable.
+## Running the benchmark
 
-## Installation
+The benchmark always runs on the Pi. The recommended way is to control it from a laptop: `crb remote` starts the run on the Pi, shows its progress, and, when it finishes, copies the results to the laptop and opens the report in the browser. The run continues on the Pi if the laptop disconnects.
+
+### Step 1. Install on the Pi (once)
 
 ```bash
 git clone https://github.com/airimonda/me4-rag-bench.git
 cd me4-rag-bench
 bash scripts/install_pi.sh
 source .venv/bin/activate
-crb fetch            # downloads and builds the datasets, about 1.2 GB on disk
+crb fetch                       # downloads and builds the datasets (about 1.2 GB, 10–20 minutes)
 ```
 
-## Usage
+Store the API key on the Pi so that runs started over SSH can read it:
 
-1. Start the system under test as an HTTP server (default `http://127.0.0.1:8000`) implementing the interface in [docs/ADAPTER.md](docs/ADAPTER.md). A reference implementation and a template are included:
+```bash
+mkdir -p ~/.config/crb
+echo 'OPENROUTER_API_KEY=sk-or-...' > ~/.config/crb/env
+chmod 600 ~/.config/crb/env
+```
 
-   ```bash
-   crb baseline                            # BM25 reference system
-   python3 examples/adapter_template.py    # minimal skeleton to adapt
-   ```
+### Step 2. Install on the laptop (once)
 
-2. Verify the setup. Pre-flight checks make at most one model call.
+```bash
+git clone https://github.com/airimonda/me4-rag-bench.git
+cd me4-rag-bench
+python3 -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install -e .
+```
 
-   ```bash
-   export OPENROUTER_API_KEY=...
-   crb check
-   ```
+Check that the laptop can reach the Pi: `ssh <user>@<pi-address>` should open a shell. Setting up an SSH key (`ssh-keygen`, then `ssh-copy-id <user>@<pi-address>`) avoids repeated password prompts.
 
-3. Run the benchmark.
+### Step 3. Start the system under test on the Pi
 
-   ```bash
-   crb                       # interactive wizard
-   crb run --official        # class-v1 sample, judged as in the papers
-   crb run --smoke           # quick practice run, not comparable
-   crb run --full            # every question in every dataset
-   ```
+The system under test is an HTTP server on the Pi (default `http://127.0.0.1:8000`) that implements the interface in [docs/ADAPTER.md](docs/ADAPTER.md). Start it in a way that keeps it running after you log out, for example in `tmux`:
 
-4. Open the report. It is written to `runs/<student>/<date-time>/report.html`. To view it from another machine on the network:
+```bash
+tmux new -s adapter             # on the Pi
+cd ~/me4-rag-bench && source .venv/bin/activate
+python3 your_adapter.py         # your system; or `crb baseline` for the reference system
+# detach with Ctrl-b, then d
+```
 
-   ```bash
-   crb serve
-   ```
+`examples/adapter_template.py` is a minimal skeleton to adapt; `crb baseline` starts the BM25 reference system.
 
-Other commands: `crb score RUN_DIR` re-judges and re-scores a run, `crb report RUN_DIR` rebuilds the report, and `crb run --resume RUN_DIR` continues an interrupted run.
+### Step 4. Check the setup
+
+On the Pi:
+
+```bash
+crb check
+```
+
+Every line should read `ok` (on a Pi, `WARN` lines are informational). Fix any `FAIL` line using the suggestion printed under it. The check makes at most one model call.
+
+### Step 5. Run from the laptop
+
+```bash
+crb remote <user>@<pi-address> --smoke --student <student-number>      # practice run, a few minutes, a few cents
+crb remote <user>@<pi-address> --official --student <student-number>   # official run, about 30–90 minutes
+```
+
+When the run finishes, the run folder is copied to `~/crb-runs/<student>/<date-time>/` on the laptop and `report.html` opens in the default browser.
+
+If you stop following with Ctrl-C, or the laptop sleeps, the run keeps going on the Pi. To collect the report later:
+
+```bash
+crb pull <user>@<pi-address> --wait     # waits for the current run to finish, then copies and opens it
+crb pull <user>@<pi-address>            # copies and opens the newest finished run
+```
+
+### Alternative: run directly on the Pi
+
+```bash
+crb                             # interactive wizard
+crb run --official --student <student-number>
+```
+
+Use `tmux` for long runs so that a dropped SSH session does not stop the run. The report is written to `runs/<student>/<date-time>/report.html` on the Pi; open it on the laptop with `crb pull <user>@<pi-address>`, or serve it with `crb serve`.
+
+### Run modes
+
+| Mode | Questions | Judges | Comparable with the papers |
+|---|---|---|---|
+| `--smoke` | 10 per test | one inexpensive judge | No; for checking the setup |
+| `--official` | fixed `class-v1` sample (533 retrieval, 200 ViDoRe, 400 CRAG) | the papers' judges | Yes, with 95% intervals |
+| `--full` | every question | the papers' judges | Yes, with no sampling error |
+
+### Other commands
+
+| Command | Purpose |
+|---|---|
+| `crb run --resume RUN_DIR` | Continue an interrupted run; answered questions are skipped |
+| `crb score RUN_DIR` | Re-judge and re-score a run (cached judgments are reused at no cost) |
+| `crb report RUN_DIR` | Rebuild `report.html` and `summary.md` from `results.json` |
+| `crb serve` | Serve the runs folder read-only over HTTP |
+| `crb fetch --dev` | Build a tiny offline dataset for development |
 
 ## Adapter interface
 

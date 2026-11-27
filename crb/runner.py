@@ -451,7 +451,11 @@ def print_summary(results: dict, run_dir: Path) -> None:
     if h.get("available") and isinstance(h.get("temp_max"), (int, float)):
         print(f"  peak temperature: {h['temp_max']:g} C")
     print(f"\nReport: {Path(run_dir) / 'report.html'}")
-    print(f"View it from your laptop: crb serve {run_dir}")
+    import getpass
+    import socket
+    who = f"{getpass.getuser()}@{socket.gethostname()}"
+    print(f"Open it on your laptop:  crb pull {who} --run {run_dir}   (copies the run and opens the report)")
+    print(f"Or serve it here:        crb serve {run_dir}")
 
 
 def notify(title: str, message: str) -> None:
