@@ -11,7 +11,7 @@ system over HTTP, times everything on the Pi, samples the Pi's health every seco
 with the papers' own judges, and writes an offline `report.html` that places the student's run
 inside the published results tables.
 
-Students never compare with each other. The only comparison is with published systems.
+Results are compared with published systems only.
 
 Design references (read them, they are the target look and wording):
 - `docs/design/report_mockup.html` — the report. `report.html` must look and behave like it.

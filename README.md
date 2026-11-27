@@ -1,111 +1,133 @@
-# me4-rag-bench (`crb`)
+# me4-rag-bench
 
-A benchmark for your document question-answering (RAG) system. It runs on your own Raspberry Pi.
+`crb` is a benchmark for document question-answering (RAG) systems running on a Raspberry Pi. It evaluates a system through a small HTTP interface, scores it on open datasets that have published results, and produces an offline report that places the run within those published results.
 
-It sends open datasets to your system over HTTP, times every answer, checks the Pi's health once a second, and scores the answers with the judges used in the papers. At the end you get one `report.html` that shows where your system sits among published systems.
+Each run reports four layers of answer quality, latency measured on the device, token cost, and device health (temperature, throttling, power, CPU and memory) sampled once per second. Results are expressed as a rank and as a position relative to the median of the published systems on the same data, metric and judge.
 
-You are never compared with other students. You are compared with published results only. For each test the report shows your rank and whether you are above or below the median of the published systems.
+## Features
 
-## Quick start
+- **Architecture-agnostic.** Any system that implements four HTTP endpoints can be evaluated, whether it uses text chunks, page images, tool-using agents, long context or a knowledge graph.
+- **Comparable with the literature.** Datasets, metrics and judges follow ViDoRe V3 and CRAG, so scores can be read against the published tables.
+- **Layered diagnosis.** Retrieval, generation with the correct pages, and the full pipeline are scored separately, and every question is attributed to the layer that failed.
+- **Measured on the device.** Latency, ingest time and resource use are recorded on the Pi itself; token use is counted by a local proxy rather than self-reported.
+- **Plug and play.** One install script, an interactive wizard, pre-flight checks, resumable runs and a self-contained HTML report.
 
-You need a Raspberry Pi 4 (4 GB) or Pi 5 with 64-bit Raspberry Pi OS, about 2.5 GB free disk, and an OpenRouter key from the teaching team.
+## Requirements
 
-1. Install.
+- Raspberry Pi 4 (4 GB) or Raspberry Pi 5, 64-bit Raspberry Pi OS, Python 3.10 or later
+- About 2.5 GB of free disk space
+- An OpenRouter API key for the judges (`CRB_JUDGE_KEY` or `OPENROUTER_API_KEY`)
+
+macOS and Linux laptops are supported for development; device health metrics are then partly unavailable.
+
+## Installation
+
+```bash
+git clone https://github.com/airimonda/me4-rag-bench.git
+cd me4-rag-bench
+bash scripts/install_pi.sh
+source .venv/bin/activate
+crb fetch            # downloads and builds the datasets, about 1.2 GB on disk
+```
+
+## Usage
+
+1. Start the system under test as an HTTP server (default `http://127.0.0.1:8000`) implementing the interface in [docs/ADAPTER.md](docs/ADAPTER.md). A reference implementation and a template are included:
 
    ```bash
-   git clone https://github.com/airimonda/me4-rag-bench.git
-   cd me4-rag-bench
-   bash scripts/install_pi.sh
-   source .venv/bin/activate
+   crb baseline                            # BM25 reference system
+   python3 examples/adapter_template.py    # minimal skeleton to adapt
    ```
 
-2. Download the data (about 1.2 GB, one time).
+2. Verify the setup. Pre-flight checks make at most one model call.
 
    ```bash
-   crb fetch
-   ```
-
-3. Start your system as an HTTP server on port 8000. No system yet? Try the reference one or the template:
-
-   ```bash
-   crb baseline                              # reference system
-   python3 examples/adapter_template.py      # empty skeleton to copy
-   ```
-
-   The contract your server must follow is in [docs/ADAPTER.md](docs/ADAPTER.md).
-
-4. Check that everything is ready. This costs nothing.
-
-   ```bash
-   export OPENROUTER_API_KEY=your-key-here
+   export OPENROUTER_API_KEY=...
    crb check
    ```
 
-5. Run it.
+3. Run the benchmark.
 
    ```bash
-   crb
+   crb                       # interactive wizard
+   crb run --official        # class-v1 sample, judged as in the papers
+   crb run --smoke           # quick practice run, not comparable
+   crb run --full            # every question in every dataset
    ```
 
-   `crb` asks a few questions, runs everything, and prints the path of `report.html`. To look at the report from your laptop, run `crb serve` on the Pi and open the link it prints. See [docs/GUIDE.md](docs/GUIDE.md).
+4. Open the report. It is written to `runs/<student>/<date-time>/report.html`. To view it from another machine on the network:
 
-Want to try it cheaply first? `crb run --smoke` uses tiny samples and a cheap judge. Its report is marked "not comparable".
+   ```bash
+   crb serve
+   ```
 
-## What is measured
+Other commands: `crb score RUN_DIR` re-judges and re-scores a run, `crb report RUN_DIR` rebuilds the report, and `crb run --resume RUN_DIR` continues an interrupted run.
 
-Four layers of quality, then speed, cost and Pi health. Each one is scored on its own, so you can see which part of your system to fix.
+## Adapter interface
 
-| # | What | Question it answers | Data |
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Identify the system |
+| `POST /ingest` | Index a collection of pages |
+| `POST /retrieve` | Return the top-k page identifiers for a question |
+| `POST /answer` | Answer a question; streaming (server-sent events or chunked text) or JSON |
+
+`/answer` is called in three modes: `e2e` (full pipeline), `gold` (correct pages supplied, retrieval bypassed) and `web` (CRAG, five supplied web pages). Request and response formats, examples and guidance for common architectures are in [docs/ADAPTER.md](docs/ADAPTER.md).
+
+## Evaluation
+
+| Layer | Question | Metric | Data |
 |---|---|---|---|
-| 1 | Retrieval | Did your search find the right pages? (nDCG@10, Recall@10; no LLM) | ViDoRe V3, all English questions |
-| 2 | Gold pages | Given the right pages, is the answer right? (judge accuracy) | ViDoRe V3, 100 questions per pack |
-| 3 | End to end | Does the whole system answer correctly? (judge accuracy) | the same questions |
-| 4 | Truthfulness | Does it say "I don't know" instead of making things up? | CRAG, 400 questions |
-| - | Speed | Time to first token and total time, p50 / p90, ingest time | measured by `crb` on the Pi |
-| - | Cost | Tokens and dollars per answer, counted by the token proxy | the proxy |
-| - | Pi health | Temperature, throttling, under-voltage, CPU, memory, network | sampled every second |
+| 1. Retrieval | Does the system find the right pages? | nDCG@10, Recall@10 | ViDoRe V3, all English questions (533) |
+| 2. Grounded generation | Given the correct pages, is the answer correct? | Accuracy, GPT-5.2 judge | ViDoRe V3, 100 questions per dataset |
+| 3. End to end | Does the full pipeline answer correctly? | Accuracy, GPT-5.2 judge | Same questions as layer 2 |
+| 4. Truthfulness | Does the system avoid unsupported answers? | Accuracy − hallucination (CRAG auto-eval) | CRAG Task 1, 400 questions |
+| Latency | How fast is it on the device? | Time to first token and total time (p50, p90), ingest rate | All answers |
+| Cost | What does a run cost? | Tokens and USD per answer | Local token proxy |
+| Device health | Does the device stay within limits? | Peak temperature, time throttled, under-voltage, CPU, memory | 1 Hz sampler |
 
-A diagnosis then tells you, for every question, whether the miss was in retrieval, in generation, or in putting the two together. Details and formulas: [docs/METHOD.md](docs/METHOD.md).
+The official run uses a fixed stratified sample (`class-v1`, seed 7). Accuracy figures carry 95% bootstrap intervals with a finite-population correction. Formulas, judge configuration, sampling and deviations from the original papers are documented in [docs/METHOD.md](docs/METHOD.md).
 
 ## Datasets
 
-| Pack | Content | Licence | Link |
-|---|---|---|---|
-| ViDoRe V3 HR | 1,110 pages of EU labour-market reports, 318 English questions | CC-BY-4.0 | https://huggingface.co/datasets/vidore/vidore_v3_hr |
-| ViDoRe V3 Computer Science | 1,360 textbook pages, 215 English questions | CC-BY-4.0 | https://huggingface.co/datasets/vidore/vidore_v3_computer_science |
-| CRAG Task 1 | 5 web pages per question, 400 sampled public-test questions | CC BY-NC 4.0 (non-commercial) | https://github.com/facebookresearch/CRAG |
+| Dataset | Content | Licence |
+|---|---|---|
+| [ViDoRe V3 HR](https://huggingface.co/datasets/vidore/vidore_v3_hr) | 1,110 pages of EU labour-market reports, 318 English questions | CC BY 4.0 |
+| [ViDoRe V3 Computer Science](https://huggingface.co/datasets/vidore/vidore_v3_computer_science) | 1,360 textbook pages, 215 English questions | CC BY 4.0 |
+| [CRAG Task 1](https://github.com/facebookresearch/CRAG) | Public test set, five web pages per question | CC BY-NC 4.0 |
 
-Licence details: [datasets/LICENSES.md](datasets/LICENSES.md).
+See [datasets/LICENSES.md](datasets/LICENSES.md). CRAG data may be used for non-commercial purposes only.
 
-## What you get
+## Output
 
-Everything lands in `runs/<student>/<date-time>/`:
-
-| File | What it is |
+| File | Contents |
 |---|---|
-| `report.html` | The report. One file, works offline. |
-| `summary.md` | The result as plain text, for slides. |
-| `results.json` | Every number in the report. |
-| `answers.jsonl` | Every question, your answer, timings. |
-| `health.csv` | Pi health, one row per second. |
-| `proxy.jsonl` | Every LLM call: tokens, cost, time. |
-| `judgments.jsonl` | What each judge said. |
-| `run.log` | What happened, in order. |
+| `report.html` | Self-contained report |
+| `summary.md` | Plain-text summary |
+| `results.json` | All computed metrics |
+| `answers.jsonl` | Every question, answer and timing |
+| `judgments.jsonl` | Judge decisions |
+| `health.csv` | Device samples, one per second |
+| `proxy.jsonl` | Model calls with tokens and cost |
+| `run.log` | Run log |
 
-## Time and cost
+## Runtime and cost
 
-An official run takes about 1.5 hours on a Pi 4 and uses about 8 million tokens. With a flash-class model that is about $3.40 for your system, plus about $1.90 for the judges. The class key pays the judges. See [docs/GUIDE.md](docs/GUIDE.md).
+An official run takes about 1.5 hours on a Raspberry Pi 4 and uses about 8 million tokens. With a flash-class model the system under test costs about USD 3.40, and judging costs about USD 1.90. Details are in [docs/GUIDE.md](docs/GUIDE.md).
 
-## More help
+## Documentation
 
-- [docs/GUIDE.md](docs/GUIDE.md): full walkthrough on the Pi
-- [docs/ADAPTER.md](docs/ADAPTER.md): the HTTP contract and the token proxy
-- [docs/METHOD.md](docs/METHOD.md): every metric and its source
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): when something goes wrong
+- [docs/GUIDE.md](docs/GUIDE.md): step-by-step setup and run on a Raspberry Pi
+- [docs/ADAPTER.md](docs/ADAPTER.md): HTTP interface and token proxy
+- [docs/METHOD.md](docs/METHOD.md): metrics, judges, sampling and sources
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): common problems and fixes
+- [SPEC.md](SPEC.md): design specification
 
-## Credits and licences
+## References
 
-- This tool: MIT (see `LICENSE`).
-- ViDoRe V3: Loison et al., 2026 (arXiv 2601.08620), CC-BY-4.0.
-- CRAG: Yang et al., 2024 (arXiv 2406.04744), CC BY-NC 4.0. Use is non-commercial only.
-- The reference adapter is a floor to compare against, not a model answer.
+- Loison et al. *ViDoRe V3: A Comprehensive Evaluation of Retrieval Augmented Generation in Complex Real-World Scenarios.* arXiv:2601.08620, 2026.
+- Yang et al. *CRAG: Comprehensive RAG Benchmark.* arXiv:2406.04744, 2024.
+
+## Licence
+
+The benchmark code is released under the MIT licence (see [LICENSE](LICENSE)). Datasets are subject to their own licences, listed above.
