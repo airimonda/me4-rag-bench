@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Class RAG Benchmark results</title>
+<style>
+/* Layout: one 60rem column read top to bottom. 1 Verdict (headline, then one row per metric grouped by layer), 2 Why, 3 Speed, 4 Cost, 5 Pi health, 6 Answers, 7 Files. The verdict block is the only heavy element; everything after it is quieter. */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --fg: #1a2128; --muted: #5f6a75; --faint: #8a949e; --line: #e1e6eb; --grid: #edf0f3;
+  --accent: #0f6e78; --accent-soft: #e3f1f2;
+  --you: #e2611b; --s1: #257de0; --s2: #f47230; --s3: #00b894; --s4: #f2a600; --neutral: #aab3bb;
+  --good: #0aac23; --good-ink: #116b25; --good-soft: #e4f5e7;
+  --warn: #fbb315; --warn-ink: #8a5a00; --warn-soft: #fdf2d8;
+  --crit: #dc3c3d; --crit-ink: #b02a2b; --crit-soft: #fce8e8;
+  --band: #eef2f5; --track: #edf1f4; --code-bg: #eef2f6;
+  --f-body: system-ui, "Segoe UI", Roboto, sans-serif;
+  --f-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111619; --surface: #181e23; --fg: #e7ecf0; --muted: #9ca8b2; --faint: #6f7b86; --line: #2a333b; --grid: #232b32;
+    --accent: #4fc0c9; --accent-soft: #15302f;
+    --you: #f07a3a; --s1: #338ced; --s2: #e76624; --s3: #00a888; --s4: #d28e05; --neutral: #5f6a74;
+    --good: #0aac23; --good-ink: #62d27b; --good-soft: #15321e;
+    --warn: #fbb315; --warn-ink: #f3c560; --warn-soft: #382d12;
+    --crit: #dc3c3d; --crit-ink: #f28a8b; --crit-soft: #3a1a1a;
+    --band: #1e252b; --track: #232b32; --code-bg: #1f272e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111619; --surface: #181e23; --fg: #e7ecf0; --muted: #9ca8b2; --faint: #6f7b86; --line: #2a333b; --grid: #232b32;
+  --accent: #4fc0c9; --accent-soft: #15302f;
+  --you: #f07a3a; --s1: #338ced; --s2: #e76624; --s3: #00a888; --s4: #d28e05; --neutral: #5f6a74;
+  --good: #0aac23; --good-ink: #62d27b; --good-soft: #15321e;
+  --warn: #fbb315; --warn-ink: #f3c560; --warn-soft: #382d12;
+  --crit: #dc3c3d; --crit-ink: #f28a8b; --crit-soft: #3a1a1a;
+  --band: #1e252b; --track: #232b32; --code-bg: #1f272e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 14px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 1.25rem 4rem; }
+.wrap { max-width: 60rem; margin: 0 auto; display: grid; gap: 3rem; }
+h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
+p { margin: 0; max-width: 70ch; }
+a { color: var(--accent); }
+.row .name a { color: var(--fg); text-decoration-color: var(--faint); text-underline-offset: 2px; overflow-wrap: anywhere; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--f-mono); font-size: 0.85em; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+small { font-size: 0.8rem; color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* header */
+header { display: grid; gap: 0.6rem; }
+header h1 { font-size: 1.5rem; }
+.metaline { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; font-size: 0.82rem; color: var(--muted); }
+.metaline b { color: var(--fg); font-weight: 600; }
+.badge { font-size: 0.72rem; font-weight: 600; padding: 0.12rem 0.55rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: 3px; margin-left: 0.4rem; }
+
+/* section heads */
+.sec { display: grid; gap: 1rem; min-width: 0; }
+.sec-head { display: grid; grid-template-columns: auto 1fr; gap: 0 0.75rem; align-items: baseline; }
+.sec-head .n { font-family: var(--f-mono); font-size: 0.8rem; color: var(--faint); grid-row: span 2; }
+.sec-head h2 { font-size: 1.2rem; }
+.sec-head p { color: var(--muted); font-size: 0.88rem; grid-column: 2; }
+
+/* verdict block */
+.verdict { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.headline { padding: 1.4rem 1.5rem; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.25rem 2rem; align-items: center; border-bottom: 1px solid var(--line); }
+.headline .say { font-size: 1.35rem; font-weight: 650; line-height: 1.3; max-width: 30ch; }
+.headline .say em { font-style: normal; color: var(--crit-ink); }
+.counts { display: flex; gap: 0.5rem; }
+.count { display: grid; justify-items: center; gap: 0.1rem; min-width: 4.6rem; padding: 0.55rem 0.6rem; border-radius: 10px; }
+.count b { font-size: 1.6rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.count span { font-size: 0.75rem; font-weight: 600; }
+.count.good { background: var(--good-soft); color: var(--good-ink); }
+.count.warn { background: var(--warn-soft); color: var(--warn-ink); }
+.count.bad { background: var(--crit-soft); color: var(--crit-ink); }
+
+.rows { display: grid; }
+.group { padding: 1.1rem 1.5rem 0.5rem; border-top: 1px solid var(--line); display: grid; gap: 0.15rem; }
+.group span { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); }
+.group b { font-size: 1.02rem; }
+.group small { font-size: 0.82rem; max-width: 75ch; }
+.summary { padding: 1.3rem 1.5rem 1.1rem; display: grid; gap: 0.45rem; border-bottom: 1px solid var(--line); }
+.summary .say { font-size: 1.25rem; font-weight: 650; line-height: 1.3; }
+.summary .how { font-size: 0.86rem; color: var(--muted); max-width: 80ch; }
+.youtxt { color: var(--you); }
+.rankcard .plain { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+.rankcard .take { font-size: 0.9rem; font-weight: 600; }
+.group:first-child { border-top: 0; }
+.row { display: grid; grid-template-columns: 13rem minmax(0, 1fr) 6.2rem 5.6rem 3.2rem; gap: 0.2rem 1rem; align-items: center; padding: 0.55rem 1.5rem 0.6rem; position: relative; }
+.rankwrap { padding: 0.2rem 1.5rem 1.2rem; display: grid; gap: 0.6rem; }
+.ranks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; }
+.ranks.one { grid-template-columns: 1fr; }
+.rankcard { background: var(--bg); border-radius: 10px; padding: 0.8rem 0.9rem; display: grid; gap: 0.35rem; align-content: start; min-width: 0; }
+.rankcard .rt { font-size: 0.86rem; }
+.rankcard .rpos { font-size: 0.84rem; color: var(--muted); }
+.rankcard .rpos b { color: var(--fg); }
+.med { font-weight: 650; }
+.med.above { color: var(--good-ink); } .med.below { color: var(--crit-ink); } .med.at { color: var(--warn-ink); }
+.rankcard .dsrc { font-size: 0.74rem; color: var(--muted); }
+.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.row[aria-expanded="true"] { background: var(--bg); }
+.row .rk { font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
+.row .rk small { display: block; font-weight: 400; }
+.row .chev { width: 0.55rem; height: 0.55rem; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint); transform: rotate(45deg); justify-self: center; margin-top: -0.3rem; transition: transform 0.15s; }
+.row[aria-expanded="true"] .chev { transform: rotate(225deg); margin-top: 0.3rem; }
+.detail { background: var(--bg); padding: 0.2rem 1.5rem 1.1rem; display: grid; gap: 0.6rem; border-bottom: 1px solid var(--line); }
+.detail .dhead { display: grid; gap: 0.15rem; }
+.detail .dpar { font-size: 0.88rem; }
+.detail .dsrc { font-size: 0.78rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .row .chev { transition: none; } }
+.row::before { content: ""; position: absolute; left: 0; top: 0.5rem; bottom: 0.5rem; width: 4px; border-radius: 0 3px 3px 0; }
+.row.good::before { background: var(--good); } .row.warn::before { background: var(--warn); } .row.bad::before { background: var(--crit); }
+.row .name { font-weight: 600; }
+.row .name small { display: block; font-weight: 400; }
+.row .you { text-align: right; font-variant-numeric: tabular-nums; }
+.row .you b { font-size: 1.15rem; }
+.row .you small { display: block; }
+.row .par { grid-column: 2 / -1; font-size: 0.84rem; }
+.row .par span { color: var(--faint); font-size: 0.76rem; }
+.row .src { grid-column: 2 / -1; font-size: 0.76rem; color: var(--faint); }
+.row svg { width: 100%; height: 34px; display: block; overflow: visible; }
+.chip { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; font-weight: 650; padding: 0.2rem 0.6rem; border-radius: 999px; white-space: nowrap; justify-self: start; }
+.chip.good { background: var(--good-soft); color: var(--good-ink); } .chip.warn { background: var(--warn-soft); color: var(--warn-ink); } .chip.bad { background: var(--crit-soft); color: var(--crit-ink); }
+.key { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; padding: 0.7rem 1.5rem; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--line); background: var(--bg); }
+.key i { display: inline-block; vertical-align: -1px; margin-right: 0.35rem; }
+
+.system { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.system > div { padding: 0.9rem 1.5rem; display: grid; gap: 0.15rem; border-left: 1px solid var(--line); }
+.system > div:first-child { border-left: 0; }
+.system .k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); font-weight: 600; }
+.system .v { font-size: 1.2rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.system .v span { font-size: 0.82rem; font-weight: 500; color: var(--muted); }
+
+.seg { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.seg button { font: inherit; font-size: 0.8rem; padding: 0.32rem 0.7rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); font-weight: 600; }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rank-head { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; align-items: baseline; margin-top: 0.4rem; }
+.rank-pos { font-size: 0.85rem; color: var(--muted); }
+.rank-pos b { color: var(--fg); }
+/* quieter content */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.2rem; min-width: 0; display: grid; gap: 0.6rem; align-content: start; }
+.card h3 { font-size: 0.95rem; }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.25rem 1rem; }
+.stat { padding: 0.5rem 0; border-top: 1px solid var(--line); display: grid; gap: 0.05rem; }
+.stat .k { font-size: 0.78rem; color: var(--muted); }
+.stat .v { font-size: 1.15rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat .v span { font-size: 0.8rem; font-weight: 500; color: var(--muted); }
+.stat .s { font-size: 0.76rem; color: var(--faint); }
+.stat.flag .v { color: var(--warn-ink); }
+.stat.ok .v { color: var(--good-ink); }
+.legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.8rem; color: var(--muted); align-items: center; }
+.legend i { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 3px; vertical-align: -1px; margin-right: 0.35rem; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+th, td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); font-weight: 600; }
+td.r, th.r { text-align: right; }
+tbody tr:last-child td { border-bottom: 0; }
+svg text { fill: var(--muted); font-family: var(--f-body); font-size: 11px; }
+svg .lbl { fill: var(--fg); }
+svg .gridl { stroke: var(--grid); stroke-width: 1; }
+.hit { fill: transparent; }
+#tip { position: fixed; pointer-events: none; z-index: 20; background: var(--fg); color: var(--bg); font-size: 0.8rem; padding: 0.35rem 0.55rem; border-radius: 6px; max-width: 18rem; line-height: 1.35; }
+details summary { cursor: pointer; color: var(--accent); font-size: 0.84rem; padding: 0.7rem 1.5rem; border-top: 1px solid var(--line); }
+details[open] summary { border-bottom: 1px solid var(--line); }
+details .scroll { padding: 0 1rem 0.5rem; }
+.files { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.35rem 1rem; font-size: 0.84rem; }
+.files div { display: flex; gap: 0.5rem; align-items: baseline; } .files span { color: var(--muted); }
+
+@media (max-width: 760px) {
+  .headline { grid-template-columns: 1fr; padding: 1.1rem; }
+  .row { grid-template-columns: minmax(0, 1fr) auto; padding: 0.6rem 1.1rem; }
+  .row .name { grid-column: 1; } .row .chip { grid-column: 2; grid-row: 1; justify-self: end; }
+  .ranks { grid-template-columns: 1fr; } .rankwrap { padding: 0.3rem 1.1rem 1rem; }
+  .row .scale { grid-column: 1 / -1; } .row .you { grid-column: 1; text-align: left; } .row .rk { grid-column: 2; text-align: right; }
+  .detail { padding: 0.2rem 1.1rem 1rem; }
+  .row .src, .row .par { grid-column: 1 / -1; }
+  .group, .key, details summary { padding-left: 1.1rem; padding-right: 1.1rem; }
+  .system { grid-template-columns: 1fr; } .system > div { border-left: 0; border-top: 1px solid var(--line); padding: 0.8rem 1.1rem; }
+  .system > div:first-child { border-top: 0; }
+  .two { grid-template-columns: 1fr; }
+}
+
+/* additions for the generated report */
+.banner { display: inline-block; font-size: 0.85rem; font-weight: 650; color: var(--warn-ink); background: var(--warn-soft); border-radius: 6px; padding: 0.4rem 0.75rem; }
+[hidden] { display: none !important; }
+.muted { color: var(--muted); font-size: 0.86rem; }
+.notes { font-size: 0.8rem; color: var(--muted); display: grid; gap: 0.2rem; }
+.notes ul { margin: 0; padding-left: 1.1rem; }
+.stats > p { grid-column: 1 / -1; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div id="banner"></div>
+  <h1>Class RAG Benchmark results <span class="badge" id="modebadge"></span></h1>
+  <div class="metaline" id="meta1"></div>
+  <div class="metaline" id="meta2"></div>
+</header>
+
+<section class="sec">
+  <div class="sec-head"><span class="n">1</span><h2>Results</h2><p>Four questions, one per layer. Each answered by placing your run inside the published results on the same data, metric and judge.</p></div>
+  <div class="verdict">
+    <div class="summary" id="summary"></div>
+    <div class="rows" id="rows"></div>
+    <div class="system" id="system"></div>
+    <details><summary>Show as a table</summary><div class="scroll" id="vtable"></div></details>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="sec-head"><span class="n">2</span><h2>Why: which layer broke</h2><p>Each ViDoRe question gets one tag: correct, or the first layer that failed. Fix the biggest non-blue part first.</p></div>
+  <div class="card" id="diagcard">
+    <div class="legend"><span><i style="background:var(--s1)"></i>Correct</span><span><i style="background:var(--s2)"></i>Retrieval miss</span><span><i style="background:var(--s3)"></i>Generation miss</span><span><i style="background:var(--s4)"></i>Integration miss</span></div>
+    <div class="scroll" id="diag"></div>
+  </div>
+  <div class="two">
+    <div class="card">
+      <h3>End-to-end accuracy by evidence type</h3>
+      <div class="scroll" id="types"></div>
+    </div>
+    <div class="card">
+      <h3>CRAG answers</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Accurate +1</span><span><i style="background:var(--neutral)"></i>Missing 0</span><span><i style="background:var(--s2)"></i>Hallucinated −1</span></div>
+      <div class="scroll" id="crag"></div>
+      <small id="cragnote"></small>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="sec-head"><span class="n">3</span><h2>Speed</h2><p>Timed by the harness on the Pi, one question at a time, warm-up left out. Lines at 1 s, 3 s and 10 s.</p></div>
+  <div class="two">
+    <div class="card">
+      <h3>p50 and p90</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>p50</span><span><i style="background:var(--s1);opacity:.45"></i>p90</span></div>
+      <div class="scroll" id="lat"></div>
+    </div>
+    <div class="card">
+      <h3 id="histtitle">Time to first token</h3>
+      <div class="scroll" id="hist"></div>
+      <small>The last bar holds every answer that took 9.5 s or more.</small>
+    </div>
+  </div>
+  <div class="stats" id="speedstats"></div>
+</section>
+
+<section class="sec">
+  <div class="sec-head"><span class="n">4</span><h2>Cost</h2><p>Counted by the harness's token proxy.</p></div>
+  <div class="stats" id="coststats"></div>
+</section>
+
+<section class="sec">
+  <div class="sec-head"><span class="n">5</span><h2>Pi health</h2><p>Sampled every second. Grey columns mark phases; red bands mark seconds the Pi throttled.</p></div>
+  <div class="stats" id="healthstats"></div>
+  <div class="card" id="timelinecard">
+    <div class="legend" id="phase-legend"></div>
+    <div class="scroll" id="timeline"></div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="sec-head"><span class="n">6</span><h2>Answers to read first</h2><p>Wrong answers from the most common failure type down. All answers are in <code>answers.jsonl</code>.</p></div>
+  <div class="card scroll" id="worst"></div>
+</section>
+
+<section class="sec">
+  <div class="sec-head"><span class="n">7</span><h2>Files</h2><p>Saved in <code>runs/&lt;student&gt;/&lt;date-time&gt;/</code>. Open on a laptop with <code>crb serve</code>.</p></div>
+  <div class="files">
+    <div><code>report.html</code><span>this page, offline</span></div>
+    <div><code>summary.md</code><span>verdict as text, for slides</span></div>
+    <div><code>results.json</code><span>every number here</span></div>
+    <div><code>answers.jsonl</code><span>one line per question</span></div>
+    <div><code>judgments.jsonl</code><span>one line per judged answer</span></div>
+    <div><code>health.csv</code><span>1 Hz Pi samples</span></div>
+    <div><code>proxy.jsonl</code><span>one line per model call</span></div>
+  </div>
+  <div class="notes" id="notes"></div>
+</section>
+
+</div>
+<div id="tip" hidden></div>
+
+<script id="crb-data" type="application/json">__CRB_DATA__</script>
+<script>
+(function () {
+  "use strict";
+  var NS = "http://www.w3.org/2000/svg";
+  var D = {};
+  try { D = JSON.parse(document.getElementById("crb-data").textContent) || {}; } catch (e) { D = {}; }
+  var M = D.metrics || {}, R = D.ranks || {}, PUB = D.published || {}, S = D.session || {}, NOTES = D.notes || [];
+  var H = M.health || {}, L = M.latency || {}, C = M.cost || {};
+
+  /* ---------- helpers ---------- */
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function isNum(v) { return typeof v === "number" && isFinite(v); }
+  function f1(v, d) { return isNum(v) ? v.toFixed(d == null ? 1 : d) : "–"; }
+  function group(n) { return isNum(n) ? Math.round(n).toLocaleString("en-US") : "–"; }
+  function secs(ms) { return isNum(ms) ? (ms / 1000).toFixed(ms < 1000 ? 2 : 1) : "–"; }
+  function usd(v, d) { return isNum(v) ? "$" + v.toFixed(d == null ? 2 : d) : "–"; }
+  function mins(s) { var m = s / 60; return (m < 10 ? m.toFixed(1) : String(Math.round(m))) + " min"; }
+  function keys(o) { return o ? Object.keys(o) : []; }
+  function el(tag, attrs, parent, text) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function html(parent, h) { parent.innerHTML = h; return parent; }
+  function svgIn(container, label, W, H2, minw) {
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("role", "img"); svg.setAttribute("aria-label", label);
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H2);
+    svg.style.width = "100%"; svg.style.minWidth = (minw || 290) + "px";
+    container.appendChild(svg);
+    return svg;
+  }
+  function note(container, msg) { var p = document.createElement("p"); p.className = "muted"; p.textContent = msg; container.appendChild(p); }
+  var tip = $("tip");
+  function place(ev) { var x = ev.clientX + 14; if (x + 270 > window.innerWidth) x = ev.clientX - 270; tip.style.left = Math.max(4, x) + "px"; tip.style.top = (ev.clientY + 14) + "px"; }
+  function bindTip(node, h) {
+    node.addEventListener("mouseenter", function (ev) { tip.innerHTML = h; tip.hidden = false; place(ev); });
+    node.addEventListener("mousemove", place);
+    node.addEventListener("mouseleave", function () { tip.hidden = true; });
+  }
+  function niceMax(v) {
+    if (!(v > 0)) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+  }
+
+  /* ---------- reference tables ---------- */
+  var PACK_ORDER = ["vidore_v3_hr", "vidore_v3_computer_science", "crag_task1"];
+  var PACK_URL = {
+    "vidore_v3_hr": "https://huggingface.co/datasets/vidore/vidore_v3_hr",
+    "vidore_v3_computer_science": "https://huggingface.co/datasets/vidore/vidore_v3_computer_science",
+    "crag_task1": "https://github.com/facebookresearch/CRAG"
+  };
+  var PACK_NAME = { "crag_task1": "CRAG Task 1 public test" };
+  var PLAIN = { "vidore_v3_hr": "EU labour-market reports", "vidore_v3_computer_science": "computer science textbooks",
+    "crag_task1": "questions with 5 web pages each", "dev_vidore": "tiny practice pages", "dev_crag": "tiny practice web pages" };
+  var LAYERS = [
+    { id: "retrieval", tag: "Layer 1", title: "Does it find the right pages?", field: "ndcg10",
+      how: "Score = nDCG@10, 0 to 100. 100 means the right page is always the first result. No language model involved." },
+    { id: "gold", tag: "Layer 2", title: "Given the right pages, does it answer correctly?", field: "acc",
+      how: "Score = % of answers judged correct when the correct pages are handed to your model, so search cannot be the problem." },
+    { id: "e2e", tag: "Layer 3", title: "Does the whole system answer correctly?", field: "acc",
+      how: "Score = % of answers judged correct with your full pipeline: your search, your prompt, your model." },
+    { id: "crag", tag: "Layer 4", title: "Does it avoid making things up?", field: "truthfulness",
+      how: "Score = % right minus % wrong. \"I don't know\" counts 0, so it beats a wrong guess. 0 means as many wrong answers as right ones." }
+  ];
+  var TAGS = { retrieval_miss: ["Retrieval miss", "bad"], generation_miss: ["Generation miss", "warn"],
+    integration_miss: ["Integration miss", "warn"], hallucinated: ["Hallucinated", "bad"] };
+  function packName(p) { return PACK_NAME[p] || p; }
+  function packsFor(layer) {
+    var have = keys(M[layer.id]);
+    var all = have.slice();
+    if (D.mode !== "smoke") PACK_ORDER.forEach(function (p) {
+      var isCrag = p.indexOf("crag") === 0;
+      if ((layer.id === "crag") === isCrag && all.indexOf(p) < 0) all.push(p);
+    });
+    all.sort(function (a, b) {
+      var i = PACK_ORDER.indexOf(a), j = PACK_ORDER.indexOf(b);
+      return (i < 0 ? 99 : i) - (j < 0 ? 99 : j) || (a < b ? -1 : 1);
+    });
+    return all;
+  }
+
+  /* ---------- header ---------- */
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function pick(o) { for (var i = 1; i < arguments.length; i++) { var v = o && o[arguments[i]]; if (v != null && v !== "") return v; } return null; }
+  function piText(pi) {
+    if (!pi) return "Pi not recorded";
+    if (typeof pi === "string") return pi;
+    var parts = [], model = pick(pi, "model", "name");
+    if (model) parts.push(String(model).replace(/^Raspberry Pi /, "Pi "));
+    var gb = pick(pi, "ram_gb", "mem_gb"), mb = pick(pi, "ram_mb", "mem_total_mb", "mem_mb");
+    if (gb != null) parts.push(gb + " GB"); else if (mb != null) parts.push(Math.round(mb / 1024) + " GB");
+    var cool = pick(pi, "cooler", "cooling");
+    if (cool != null) parts.push(cool === true ? "cooler" : cool === false ? "no cooler" : String(cool));
+    return parts.length ? parts.join(" · ") : "Pi not recorded";
+  }
+  (function header() {
+    var mode = D.mode || "official";
+    $("modebadge").textContent = mode === "smoke" ? "Practice run" : mode === "full" ? "Full run" : "Official run";
+    var b = [];
+    if (D.comparable === false || mode === "smoke") b.push("Practice run — not comparable to published results");
+    var stt = D.status || S.status;
+    if (stt === "interrupted" || stt === "incomplete" || stt === "running") b.push("Run " + stt + " — scores cover only the questions answered so far");
+    html($("banner"), b.map(function (t) { return '<span class="banner">' + esc(t) + "</span> "; }).join(""));
+    var ad = S.adapter, adh = (ad && ad.health) || S.adapter_health || S.health || {};
+    var sys = pick(adh, "name") || pick(ad, "name");
+    var ver = pick(adh, "version") || pick(ad, "version");
+    var adUrl = typeof ad === "string" ? ad : pick(ad, "url");
+    var m1 = [];
+    m1.push("<span><b>" + esc(S.student || "unknown student") + "</b></span>");
+    m1.push("<span>" + esc(piText(S.pi || S.pi_info || S.device)) + "</span>");
+    m1.push("<span>" + (sys ? "<b>" + esc(sys) + "</b>" + (ver ? " " + esc(ver) : "") : "system name not reported") + "</span>");
+    m1.push("<span>sample " + esc(S.sample || "class-v1") + " · seed 7</span>");
+    html($("meta1"), m1.join(""));
+    var m2 = ["<span>Datasets:</span>"];
+    var shown = {};
+    keys(M.retrieval).concat(keys(M.gold), keys(M.e2e), keys(M.crag)).forEach(function (p) {
+      if (shown[p]) return; shown[p] = 1;
+      if (PACK_URL[p]) m2.push('<a href="' + esc(PACK_URL[p]) + '" target="_blank" rel="noopener">' + esc(p === "crag_task1" ? "facebookresearch/CRAG (Task 1, public test)" : p.replace("vidore_v3", "vidore/vidore_v3")) + "</a>");
+      else m2.push("<span>" + esc(p) + "</span>");
+    });
+    var t0 = Date.parse(pick(S, "start", "started_at", "start_iso") || ""), t1 = Date.parse(pick(S, "end", "ended_at", "end_iso") || "");
+    var dur = isFinite(t0) && isFinite(t1) && t1 > t0 ? (t1 - t0) / 1000 : H.duration_s;
+    if (isNum(dur) && dur > 0) { var hh = Math.floor(dur / 3600), mm = Math.round((dur % 3600) / 60); m2.push("<span>Pi run " + (hh ? hh + " h " : "") + mm + " min</span>"); }
+    var when = isFinite(t0) ? new Date(t0) : null;
+    var crbv = pick(S, "crb_version", "version") || pick(S.crb, "version");
+    m2.push("<span>" + (when ? when.getUTCDate() + " " + MONTHS[when.getUTCMonth()] + " " + when.getUTCFullYear() : "date not recorded") + (crbv ? " · crb " + esc(crbv) : "") + "</span>");
+    html($("meta2"), m2.join(""));
+  })();
+
+  /* ---------- ranked chart ---------- */
+  function ranked(layerId, pack, v, ci) {
+    var rows = (PUB[layerId] && PUB[layerId].rows) || [];
+    var items = [];
+    rows.forEach(function (r) { if (isNum(r[pack])) items.push({ name: r.name, v: r[pack], visual: r.kind === "visual", note: r.note }); });
+    items.push({ name: "You · this run", v: v, ci: ci, you: true });
+    items.sort(function (p, q) { return (Math.round(q.v * 10) - Math.round(p.v * 10)) || (p.you ? -1 : q.you ? 1 : 0); });
+    return items;
+  }
+  function drawRank(container, layerId, items, med, label) {
+    var wide = layerId === "crag", isRet = layerId === "retrieval", rowH = 20, right = 44, top = 4, H2 = top + items.length * rowH + 22;
+    var longest = 0; items.forEach(function (r) { longest = Math.max(longest, r.name.length); });
+    var W = wide ? 760 : 440, left = Math.min(wide ? 260 : 230, Math.max(150, Math.round(longest * 5.6 + 14)));
+    var svg = svgIn(container, label, W, H2, wide ? 520 : 340);
+    var lo = Math.min(0, Math.min.apply(null, items.map(function (r) { return r.v - (r.ci || 0); })));
+    var hi = Math.max(layerId === "crag" ? 40 : 100, Math.max.apply(null, items.map(function (r) { return r.v + (r.ci || 0); })));
+    lo = Math.floor(lo / 10) * 10; hi = Math.ceil(hi / 10) * 10;
+    var x = function (v) { return left + (v - lo) / (hi - lo) * (W - left - right); }, step = (hi - lo) > 60 ? 20 : 10;
+    for (var t = lo; t <= hi; t += step) { el("line", { x1: x(t), x2: x(t), y1: top, y2: H2 - 18, class: "gridl" }, svg); el("text", { x: x(t), y: H2 - 4, "text-anchor": "middle" }, svg, t); }
+    if (lo < 0) el("line", { x1: x(0), x2: x(0), y1: top, y2: H2 - 18, stroke: "var(--faint)" }, svg);
+    if (isNum(med)) {
+      el("line", { x1: x(med), x2: x(med), y1: top, y2: H2 - 18, stroke: "var(--fg)", "stroke-dasharray": "2 3", "stroke-width": 1.2 }, svg);
+      el("text", { x: x(med) + 4, y: H2 - 21, "font-size": 10 }, svg, "median " + med.toFixed(1));
+    }
+    items.forEach(function (r, k) {
+      var y = top + k * rowH, x0 = x(Math.min(0, r.v)), x1 = x(Math.max(0, r.v));
+      if (r.you) el("rect", { x: 0, y: y, width: W, height: rowH, rx: 4, fill: "var(--you)", "fill-opacity": 0.1 }, svg);
+      el("text", { x: left - 8, y: y + 14.5, "text-anchor": "end", class: r.you ? "lbl" : "", "font-weight": r.you ? 700 : 400 }, svg, r.name);
+      el("rect", { x: x0, y: y + 4, width: Math.max(2, x1 - x0), height: rowH - 8, rx: 3, fill: r.you ? "var(--you)" : (isRet && r.visual ? "var(--muted)" : "var(--neutral)") }, svg);
+      if (r.you && r.ci) el("line", { x1: x(r.v - r.ci), x2: x(r.v + r.ci), y1: y + rowH / 2, y2: y + rowH / 2, stroke: "var(--fg)", "stroke-width": 2, "stroke-linecap": "round" }, svg);
+      el("text", { x: x(Math.max(0, r.v + (r.you ? r.ci || 0 : 0))) + 6, y: y + 14.5, class: r.you ? "lbl" : "", "font-weight": r.you ? 700 : 400 }, svg, r.v.toFixed(1));
+      bindTip(el("rect", { x: 0, y: y, width: W, height: rowH, class: "hit" }, svg),
+        "<b>" + esc(r.name) + "</b><br>" + r.v.toFixed(1) + (r.you && r.ci ? " ± " + r.ci.toFixed(1) : "") + (r.note ? "<br>" + esc(r.note) : ""));
+    });
+  }
+
+  /* ---------- 1 Results ---------- */
+  var cards = [];   /* for the table */
+  (function results() {
+    var rows = $("rows"), scored = [];
+    LAYERS.forEach(function (layer) {
+      var gh = document.createElement("div"); gh.className = "group";
+      gh.innerHTML = "<span>" + esc(layer.tag) + "</span><b>" + esc(layer.title) + "</b><small>" + esc(layer.how) + "</small>";
+      rows.appendChild(gh);
+      var packs = packsFor(layer);
+      var panel = document.createElement("div"); panel.className = "ranks" + (packs.length === 1 ? " one" : "");
+      var pubInfo = PUB[layer.id] || {};
+      packs.forEach(function (pack) {
+        var m = (M[layer.id] || {})[pack], c = document.createElement("div"); c.className = "rankcard";
+        var v = m ? m[layer.field] : null, ci = m && isNum(m.ci95) ? m.ci95 : 0;
+        var unit;
+        if (layer.id === "retrieval") unit = "nDCG@10 · " + (m && m.pack_size && m.n === m.pack_size ? "all " + m.n : m ? m.n + (m.pack_size ? " of " + m.pack_size : "") : "");
+        else if (layer.id === "crag") unit = "accuracy − hallucination · " + (m ? m.n : 0) + " q";
+        else unit = "% correct · " + (m ? m.n : 0) + " q";
+        var head = '<p class="rt"><b>' + esc(packName(pack)) + '</b> <span class="plain">' + esc(PLAIN[pack] || "") + (PLAIN[pack] ? " · " : "") + esc(unit) + "</span></p>";
+        var key = layer.id + "." + pack, rk = R[key];
+        if (!m) { c.innerHTML = head + '<p class="take">Not run.</p><p class="rpos">No answers for this test in the run.</p>'; panel.appendChild(c); cards.push({ layer: layer, pack: pack, state: "not run" }); return; }
+        if (!isNum(v)) { c.innerHTML = head + '<p class="take">Not judged.</p><p class="rpos">Answers exist but no judge result: run <code>crb score</code> with a judge key.</p>'; panel.appendChild(c); cards.push({ layer: layer, pack: pack, state: "not judged" }); return; }
+        var pos = '<p class="rpos">You: <b>' + f1(v) + (ci ? " ± " + f1(ci) : "") + "</b>";
+        var take = "";
+        if (rk) {
+          scored.push(rk);
+          var higher = rk.rank - 1, lower = rk.of - rk.rank;
+          take = rk.rank === 1 ? "Better than every published system on this test." :
+            rk.rank === rk.of ? "Every published system scored higher on this test." :
+            higher + " published system" + (higher === 1 ? "" : "s") + " scored higher, " + lower + " lower.";
+          pos += ' · rank <b>' + rk.rank + " of " + rk.of + '</b> · <span class="med ' + esc(rk.side) + '">' + (rk.side === "above" ? "▲ above" : rk.side === "below" ? "▼ below" : "● at") +
+            ' the median</span> of published systems (' + f1(rk.median) + ")";
+        } else take = "No published table for this dataset.";
+        pos += "</p>";
+        c.innerHTML = head + '<p class="take">' + esc(take) + "</p>" + pos + '<div class="scroll"></div>' +
+          (rk ? '<p class="dsrc">Grey bars: ' + esc(pubInfo.source || "") + (PACK_URL[pack] ? ' · <a href="' + esc(PACK_URL[pack]) + '" target="_blank" rel="noopener">dataset</a>' : "") + "</p>" : "");
+        panel.appendChild(c);
+        if (rk) drawRank(c.querySelector(".scroll"), layer.id, ranked(layer.id, pack, v, ci), rk.median, "Published systems ranked, with your run");
+        cards.push({ layer: layer, pack: pack, state: "ok", v: v, ci: ci, rk: rk, unit: unit, source: pubInfo.source });
+      });
+      var lg = document.createElement("div"); lg.className = "legend ranklegend";
+      var hasCi = packs.some(function (p) { var m = (M[layer.id] || {})[p]; return m && m.ci95; });
+      lg.innerHTML = '<span><i style="background:var(--you)"></i>You' + (hasCi ? ", line = 95% interval" : "") + "</span>" +
+        (layer.id === "retrieval" ? '<span><i style="background:var(--muted)"></i>Visual retrievers</span><span><i style="background:var(--neutral)"></i>Text retrievers</span>' : '<span><i style="background:var(--neutral)"></i>Published systems</span>') +
+        '<span><i style="width:2px;height:12px;background:var(--fg)"></i>Dotted line = median of published systems</span>';
+      var wrapR = document.createElement("div"); wrapR.className = "rankwrap"; wrapR.appendChild(lg); wrapR.appendChild(panel);
+      rows.appendChild(wrapR);
+    });
+    var above = scored.filter(function (a) { return a.side === "above"; }).length, below = scored.filter(function (a) { return a.side === "below"; }).length, at = scored.length - above - below;
+    var s = $("summary");
+    if (!scored.length) {
+      s.innerHTML = '<p class="say">No test could be compared with the published systems yet.</p><p class="how">' + (D.mode === "smoke" ? "This is a practice run on practice data." : "Answers still need to be judged, or the tests were not run.") + "</p>";
+    } else {
+      s.innerHTML = '<p class="say">Above the median of published systems on <span class="med above">' + above + " of " + scored.length + '</span> tests, below on <span class="med below">' + below + "</span>" + (at ? ", level on " + at : "") + "." +
+        '</p><p class="how">Each chart below is a table from the paper, sorted best to worst. Your run is the <b class="youtxt">orange bar</b>. The dotted line is the median: half of the published systems scored above it, half below.' +
+        (scored.length < 7 && D.mode !== "smoke" ? " " + (7 - scored.length) + " of 7 tests have no score yet." : "") + "</p>";
+    }
+    /* table */
+    var t = '<table><thead><tr><th>Metric</th><th class="r">You</th><th class="r">Rank</th><th>vs median</th><th>Published rows</th></tr></thead><tbody>';
+    cards.forEach(function (a) {
+      var name = esc(a.layer.tag) + " · " + (PACK_URL[a.pack] ? "<a href='" + esc(PACK_URL[a.pack]) + "' target='_blank' rel='noopener'>" + esc(packName(a.pack)) + "</a>" : esc(packName(a.pack)));
+      if (a.state !== "ok") { t += "<tr><td>" + name + "</td><td class='r'>" + esc(a.state) + "</td><td class='r'>–</td><td>–</td><td></td></tr>"; return; }
+      t += "<tr><td>" + name + "<br><small>" + esc(a.unit) + "</small></td><td class='r'>" + f1(a.v) + (a.ci ? " ± " + f1(a.ci) : "") + "</td><td class='r'>" +
+        (a.rk ? a.rk.rank + " of " + a.rk.of : "–") + "</td><td>" + (a.rk ? esc(a.rk.side) + " (" + f1(a.rk.median) + ")" : "–") + "</td><td><small>" + esc(a.source || "") + "</small></td></tr>";
+    });
+    html($("vtable"), t + "</tbody></table>");
+  })();
+
+  /* ---------- system strip ---------- */
+  (function system() {
+    var ft = L.first_token || {}, cells = [];
+    var chip, v;
+    if (isNum(ft.p90)) {
+      var p = ft.p90 / 1000;
+      chip = p <= 3 ? ["good", "Fast · under 3 s"] : p <= 10 ? ["warn", "Acceptable · under 10 s"] : ["bad", "Slow · over 10 s"];
+      v = '<span class="v">' + (p < 10 ? p.toFixed(1) : Math.round(p)) + " <span>s</span></span>";
+      cells.push('<div><span class="k">Speed · first token p90</span>' + v + '<span class="chip ' + chip[0] + '">' + chip[1] + "</span></div>");
+    } else cells.push('<div><span class="k">Speed · first token p90</span><span class="v">–</span><small>no timed answers</small></div>');
+    var tot = (C.system_usd || 0) + (C.judge_usd || 0), known = isNum(C.system_usd) || isNum(C.judge_usd);
+    if (known) {
+      var lbl = D.mode === "smoke" ? "practice run" : D.mode === "full" ? "full run" : "official run";
+      var sub = (isNum(C.system_usd) ? usd(C.system_usd) + " your system" : "your system not measured") + (isNum(C.judge_usd) ? " · " + usd(C.judge_usd) + " judges" : "");
+      cells.push('<div><span class="k">Cost · ' + lbl + '</span><span class="v">' + usd(tot) + "</span><small>" + esc(sub) + "</small></div>");
+    } else cells.push('<div><span class="k">Cost</span><span class="v">not measured</span><small>no call went through the token proxy</small></div>');
+    if (H.available && isNum(H.temp_max)) {
+      var share = H.throttled_share, c2;
+      if (H.under_voltage) c2 = ["bad", "Under-voltage seen"];
+      else if (!isNum(share)) c2 = ["good", "Throttle flags not read"];
+      else if (share === 0) c2 = ["good", "No throttling"];
+      else c2 = [share < 0.1 ? "warn" : "bad", "Throttled " + (share * 100).toFixed(1) + "% of the run"];
+      cells.push('<div><span class="k">Pi health · peak</span><span class="v">' + f1(H.temp_max) + ' <span>°C</span></span><span class="chip ' + c2[0] + '">' + esc(c2[1]) + "</span></div>");
+    } else cells.push('<div><span class="k">Pi health</span><span class="v">no Pi stats</span><small>no temperature or throttle samples</small></div>');
+    html($("system"), cells.join(""));
+  })();
+
+  /* ---------- 2 Why ---------- */
+  function stacked(container, label, data, cats, W, left, fmtTip) {
+    var rowH = 38, H2 = data.length * rowH + 2, svg = svgIn(container, label, W, H2, 300), span = W - left - 4;
+    data.forEach(function (r, i) {
+      var y = i * rowH, xx = left, tot = r.vals.reduce(function (s, v) { return s + v; }, 0);
+      el("text", { x: 0, y: y + 21, class: "lbl" }, svg, r.name);
+      if (!tot) return;
+      r.vals.forEach(function (v, j) {
+        var w = v / tot * span, gap = j < r.vals.length - 1 ? 2 : 0;
+        var rc = el("rect", { x: xx, y: y + 5, width: Math.max(0, w - gap), height: 26, rx: 4, fill: cats[j].c }, svg);
+        if (w > 36) el("text", { x: xx + 7, y: y + 22, style: "fill:#fff", "font-weight": 600 }, svg, Math.round(v / tot * 100) + "%");
+        bindTip(rc, "<b>" + esc(r.name) + " · " + esc(cats[j].n) + "</b><br>" + esc(fmtTip(v, tot, r)));
+        xx += w;
+      });
+    });
+  }
+  (function why() {
+    var dg = M.diagnosis || {}, dk = keys(dg);
+    if (dk.length) {
+      var data = dk.map(function (p) { var d = dg[p]; return { name: p, vals: [d.correct || 0, d.retrieval_miss || 0, d.generation_miss || 0, d.integration_miss || 0] }; });
+      stacked($("diag"), "Share of questions per outcome", data,
+        [{ n: "Correct", c: "var(--s1)" }, { n: "Retrieval miss", c: "var(--s2)" }, { n: "Generation miss", c: "var(--s3)" }, { n: "Integration miss", c: "var(--s4)" }],
+        760, 190, function (v, tot) { return v + " of " + tot; });
+    } else { $("diagcard").querySelector(".legend").hidden = true; note($("diag"), "Not judged: this chart needs judged end-to-end answers."); }
+
+    /* by evidence type, summed over packs */
+    var acc = {}, order = [];
+    keys(M.e2e).forEach(function (p) {
+      var bc = M.e2e[p].by_content_type || {};
+      keys(bc).forEach(function (ct) {
+        if (!acc[ct]) { acc[ct] = { n: 0, ok: 0 }; order.push(ct); }
+        acc[ct].n += bc[ct].n || 0;
+        acc[ct].ok += isNum(bc[ct].correct) ? bc[ct].correct : (bc[ct].acc || 0) * (bc[ct].n || 0) / 100;
+      });
+    });
+    var types = $("types");
+    if (order.length) {
+      var d = order.map(function (ct) { return [ct, acc[ct].n ? Math.round(100 * acc[ct].ok / acc[ct].n) : 0, acc[ct].n]; });
+      d.sort(function (a, b) { return b[2] - a[2]; });
+      var W = 380, left = 92, rowH = 26, H2 = d.length * rowH + 20, svg = svgIn(types, "Accuracy by evidence type", W, H2, 290);
+      var x = function (v) { return left + v / 100 * (W - left - 70); };
+      [0, 50, 100].forEach(function (t) { el("line", { x1: x(t), x2: x(t), y1: 0, y2: H2 - 16, class: "gridl" }, svg); el("text", { x: x(t), y: H2 - 3, "text-anchor": "middle" }, svg, t + "%"); });
+      d.forEach(function (r, i) {
+        var y = i * rowH + 3, w = Math.max(6, x(r[1]) - x(0));
+        el("text", { x: 0, y: y + 13, class: "lbl" }, svg, r[0]);
+        var b = el("path", { d: "M" + x(0) + "," + y + " h" + (w - 4) + " a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-" + (w - 4) + " z", fill: "var(--s1)" }, svg);
+        el("text", { x: x(r[1]) + 6, y: y + 13 }, svg, r[1] + "%  n " + r[2]);
+        bindTip(b, "<b>" + esc(r[0]) + "</b><br>" + r[1] + "% correct of " + r[2]);
+      });
+    } else note(types, "Not judged: no end-to-end accuracy by evidence type yet.");
+
+    /* CRAG outcomes */
+    var ck = keys(M.crag).filter(function (p) { return isNum((M.crag[p] || {}).truthfulness); }), cn = $("cragnote");
+    if (ck.length) {
+      var rowsC = ck.map(function (p) { var m = M.crag[p]; return { name: ck.length > 1 ? p : "CRAG", vals: [m.accurate, m.missing, m.hallucinated], n: m.n }; });
+      stacked($("crag"), "CRAG answer outcomes", rowsC, [{ n: "Accurate", c: "var(--s1)" }, { n: "Missing", c: "var(--neutral)" }, { n: "Hallucinated", c: "var(--s2)" }],
+        380, 52, function (v, tot, r) { return v.toFixed(1) + "% (about " + Math.round(v / 100 * r.n) + " of " + r.n + ")"; });
+      var m0 = M.crag[ck[0]];
+      cn.innerHTML = "Truthfulness " + f1(m0.accurate) + " − " + f1(m0.hallucinated) + " = <b>" + f1(m0.truthfulness) + "</b>. Answering \"I don't know\" instead of guessing raises it.";
+    } else note($("crag"), keys(M.crag).length ? "Not judged." : "Not run.");
+  })();
+
+  /* ---------- 3 Speed ---------- */
+  (function speed() {
+    var d = [["First token", L.first_token], ["Total answer", L.total], ["Retrieval", L.retrieve]].filter(function (r) { return r[1] && isNum(r[1].p90); });
+    var lat = $("lat");
+    if (d.length) {
+      var maxv = Math.max.apply(null, d.map(function (r) { return r[1].p90 / 1000; })), steps = [5, 10, 15, 30, 60, 120, 300, 600], max = 600;
+      for (var i = 0; i < steps.length; i++) if (steps[i] >= maxv) { max = steps[i]; break; }
+      var W = 380, left = 84, rowH = 38, top = 14, H2 = top + d.length * rowH + 18;
+      var svg = svgIn(lat, "Latency p50 and p90", W, H2, 290);
+      var x = function (v) { return left + Math.min(v, max) / max * (W - left - 44); };
+      var tstep = { 5: 1, 10: 5, 15: 5, 30: 10, 60: 20, 120: 30, 300: 100, 600: 200 }[max] || max / 3;
+      for (var t = 0; t <= max + 1e-9; t += tstep) { el("line", { x1: x(t), x2: x(t), y1: top - 4, y2: H2 - 16, class: "gridl" }, svg); el("text", { x: x(t), y: H2 - 3, "text-anchor": "middle" }, svg, t + " s"); }
+      [[1, "1 s"], [3, "3 s"], [10, "10 s"]].forEach(function (b) { if (b[0] > max) return; el("line", { x1: x(b[0]), x2: x(b[0]), y1: top - 6, y2: H2 - 16, stroke: "var(--faint)", "stroke-dasharray": "3 3" }, svg); el("text", { x: x(b[0]) + 3, y: top - 3, "font-size": 10 }, svg, b[1]); });
+      d.forEach(function (r, i) {
+        var y = top + i * rowH + 4, p50 = r[1].p50 / 1000, p90 = r[1].p90 / 1000;
+        el("text", { x: 0, y: y + 16, class: "lbl" }, svg, r[0]);
+        var a = el("rect", { x: x(0), y: y + 2, width: Math.max(2, x(p90) - x(0)), height: 22, rx: 4, fill: "var(--s1)", "fill-opacity": 0.45 }, svg);
+        var b = el("rect", { x: x(0), y: y + 2, width: Math.max(2, x(p50) - x(0)), height: 22, rx: 4, fill: "var(--s1)" }, svg);
+        el("text", { x: x(p90) + 5, y: y + 17 }, svg, p90.toFixed(p90 < 1 ? 2 : 1) + " s");
+        [a, b].forEach(function (nd) { bindTip(nd, "<b>" + esc(r[0]) + "</b><br>p50 " + p50.toFixed(2) + " s · p90 " + p90.toFixed(2) + " s · n " + r[1].n); });
+      });
+    } else note(lat, "No timed answers in this run.");
+
+    var bins = L.hist_first_token_500ms || [], total = bins.reduce(function (s, v) { return s + v; }, 0), hist = $("hist");
+    $("histtitle").textContent = "Time to first token, " + group(total) + " answers";
+    if (total) {
+      var W2 = 380, H3 = 168, left2 = 36, bottom = 20, top2 = 6, max2 = niceMax(Math.max.apply(null, bins));
+      var svg2 = svgIn(hist, "Histogram of time to first token", W2, H3, 290);
+      var bw = (W2 - left2 - 6) / bins.length, y2 = function (v) { return H3 - bottom - v / max2 * (H3 - bottom - top2); };
+      [0, max2 / 2, max2].forEach(function (t) { el("line", { x1: left2, x2: W2, y1: y2(t), y2: y2(t), class: "gridl" }, svg2); el("text", { x: left2 - 4, y: y2(t) + 4, "text-anchor": "end" }, svg2, Math.round(t * 10) / 10); });
+      bins.forEach(function (v, i) {
+        var h = H3 - bottom - y2(v), px = left2 + i * bw + 1, w = bw - 2;
+        if (v > 0) {
+          var b = el("path", { d: "M" + px + "," + (H3 - bottom) + " v-" + Math.max(0, h - 3) + " a3,3 0 0 1 3,-3 h" + (w - 6) + " a3,3 0 0 1 3,3 v" + Math.max(0, h - 3) + " z", fill: "var(--s1)" }, svg2);
+          bindTip(b, (i === bins.length - 1 ? (i * 0.5).toFixed(1) + " s or more" : (i * 0.5).toFixed(1) + "–" + ((i + 1) * 0.5).toFixed(1) + " s") + "<br><b>" + v + "</b> answers");
+        }
+        if (i % 4 === 0) el("text", { x: left2 + i * bw, y: H3 - 4, "text-anchor": "middle" }, svg2, (i * 0.5) + " s");
+      });
+      el("text", { x: W2 - 4, y: H3 - 4, "text-anchor": "end" }, svg2, (bins.length * 0.5) + " s");
+    } else note(hist, "No timed answers in this run.");
+
+    var st = [], ing = L.ingest || {}, pk = keys(ing), pages = 0, sec = 0, havePages = false;
+    pk.forEach(function (p) { sec += isNum(ing[p].seconds) ? ing[p].seconds : 0; if (isNum(ing[p].pages)) { pages += ing[p].pages; havePages = true; } });
+    if (pk.length && sec > 0) st.push('<div class="stat"><span class="k">Ingest</span><span class="v">' + (havePages ? group(pages / (sec / 60)) + " <span>pages/min</span>" : mins(sec)) + '</span><span class="s">' + (havePages ? group(pages) + " pages in " + mins(sec) : "pages not recorded") + "</span></div>");
+    else st.push('<div class="stat"><span class="k">Ingest</span><span class="v">–</span><span class="s">not recorded</span></div>');
+    st.push('<div class="stat"><span class="k">Cold start</span><span class="v">' + (isNum(L.cold_start_ms) ? secs(L.cold_start_ms) + " <span>s</span>" : "–") + '</span><span class="s">first question after ingest</span></div>');
+    var rt = L.retrieve || {};
+    st.push('<div class="stat"><span class="k">Retrieval p90</span><span class="v">' + (isNum(rt.p90) ? secs(rt.p90) + " <span>s</span>" : "–") + '</span><span class="s">' + (rt.n ? group(rt.n) + " queries" : "no retrieval timing") + "</span></div>");
+    st.push('<div class="stat"><span class="k">Network to LLM</span><span class="v">' + (isNum(H.net_rtt_p50) ? f1(H.net_rtt_p50, 0) + " <span>ms p50</span>" : "–") + '</span><span class="s">' + (isNum(H.net_rtt_p90) ? "p90 " + f1(H.net_rtt_p90, 0) + " ms" : "not measured") + "</span></div>");
+    if (L.errors) st.push('<div class="stat flag"><span class="k">Failed answers</span><span class="v">' + group(L.errors) + '</span><span class="s">timeouts or adapter errors, left out of the timings</span></div>');
+    html($("speedstats"), st.join(""));
+  })();
+
+  /* ---------- 4 Cost ---------- */
+  (function cost() {
+    var st = [];
+    if (C.measured) {
+      st.push('<div class="stat"><span class="k">Your system</span><span class="v">' + (isNum(C.system_usd) ? usd(C.system_usd) : "–") + '</span><span class="s">' + (isNum(C.tokens_in) ? (C.tokens_in / 1e6).toFixed(1) + "M in · " + (C.tokens_out / 1e6).toFixed(1) + "M out" : "") + (C.cost_partial ? " · some calls had no price" : "") + "</span></div>");
+    } else st.push('<div class="stat"><span class="k">Your system</span><span class="v">not measured</span><span class="s">point your LLM client at the token proxy</span></div>');
+    st.push('<div class="stat"><span class="k">Judges</span><span class="v">' + (isNum(C.judge_usd) ? usd(C.judge_usd) : "–") + '</span><span class="s">' + (isNum(C.judge_usd) ? "grading the answers" : "not judged") + "</span></div>");
+    st.push('<div class="stat"><span class="k">Per answer</span><span class="v">' + (isNum(C.per_answer_usd) ? usd(C.per_answer_usd, 4) : "–") + '</span><span class="s">' + (C.measured ? "your system, " + group(C.answers) + " answers" : "needs the proxy") + "</span></div>");
+    if (C.measured) st.push('<div class="stat ' + (C.context_cap_hits ? "flag" : "ok") + '"><span class="k">Context cap hits</span><span class="v">' + group(C.context_cap_hits) + '</span><span class="s">calls cut by the model\'s token limit</span></div>');
+    html($("coststats"), st.join(""));
+  })();
+
+  /* ---------- 5 Pi health ---------- */
+  var PHASE_NAME = { preflight: "Preflight", ingest: "Ingest", retrieval: "Retrieval", gold: "Gold pages", e2e: "End-to-end", crag: "CRAG", judging: "Judging" };
+  function phaseName(p) { return PHASE_NAME[p] || p; }
+  (function health() {
+    var hs = $("healthstats"), card = $("timelinecard");
+    if (!H.available) {
+      html(hs, '<p class="muted">No Pi stats: this run has no temperature or throttle samples (not running on a Pi, or <code>vcgencmd</code> is missing).</p>');
+      card.hidden = true;
+      return;
+    }
+    var st = [], byp = H.throttled_by_phase || {}, bk = keys(byp).sort(function (a, b) { return byp[b] - byp[a]; });
+    function tile(cls, k, v, u, s) { st.push('<div class="stat ' + cls + '"><span class="k">' + k + '</span><span class="v">' + v + (u ? " <span>" + u + "</span>" : "") + '</span><span class="s">' + s + "</span></div>"); }
+    tile(isNum(H.temp_max) && H.temp_max >= 75 ? "flag" : "ok", "Peak temperature", f1(H.temp_max), "°C", "soft limit 80 °C");
+    if (isNum(H.throttled_share)) tile(H.throttled_share > 0 ? "flag" : "ok", "Time throttled", (H.throttled_share * 100).toFixed(1), "%", H.throttled_share > 0 ? group(H.throttled_seconds) + " s" + (bk.length === 1 ? ", all in " + esc(phaseName(bk[0])) : bk.length ? ", mostly in " + esc(phaseName(bk[0])) : "") : "none of the run");
+    else tile("", "Time throttled", "–", "", "throttle flags not read");
+    tile(H.under_voltage ? "flag" : (H.under_voltage === false ? "ok" : ""), "Under-voltage", H.under_voltage ? "seen" : H.under_voltage === false ? "none" : "–", "", "whole run");
+    tile(isNum(H.busiest_core_p95) && H.busiest_core_p95 >= 95 ? "flag" : "", "Busiest core p95", f1(H.busiest_core_p95, 0), "%", isNum(H.busiest_core_p95) && H.busiest_core_p95 >= 95 ? "one thread is the bottleneck" : "CPU p95 " + f1(H.cpu_p95, 0) + "% over all cores");
+    tile(isNum(H.mem_avail_min_mb) && H.mem_avail_min_mb < 300 ? "flag" : "ok", "Free RAM, lowest", group(H.mem_avail_min_mb), "MB", isNum(H.swap_max_mb) && H.swap_max_mb > 0 ? "swap used up to " + group(H.swap_max_mb) + " MB" : "no swap");
+    tile(isNum(H.arm_mhz_min) && isNum(H.arm_mhz_max) && H.arm_mhz_min < 0.95 * H.arm_mhz_max ? "flag" : "ok", "ARM clock, lowest", group(H.arm_mhz_min), "MHz", isNum(H.arm_mhz_max) ? "full speed " + group(H.arm_mhz_max) : "");
+    if (isNum(H.adapter_rss_max_mb)) tile("", "Your system's memory, peak", group(H.adapter_rss_max_mb), "MB", "resident size of the adapter");
+    html(hs, st.join(""));
+
+    var tl = H.timeline || {}, T = tl.t || [];
+    if (T.length < 2) { card.hidden = true; return; }
+    var phases = H.phases || [], bands = H.throttle_bands || [], Nsec = Math.max(T[T.length - 1], H.duration_s || 0, 1), N = Nsec / 60;
+    function has(a) { return (a || []).some(isNum); }
+    var panels = [];
+    function nums(a) { return a.filter(isNum); }
+    if (has(tl.temp)) { var lo = Math.floor(Math.min(40, Math.min.apply(null, nums(tl.temp))) / 10) * 10, hi = Math.ceil(Math.max(85, Math.max.apply(null, nums(tl.temp))) / 5) * 5; panels.push(["Temperature", "°C", tl.temp, lo, hi, 20, 80]); }
+    if (has(tl.cpu)) panels.push(["CPU", "%", tl.cpu, 0, 100, 50, null]);
+    if (has(tl.mhz)) { var lo2 = Math.floor(Math.min(600, Math.min.apply(null, nums(tl.mhz))) / 100) * 100, hi2 = Math.ceil(Math.max(1900, Math.max.apply(null, nums(tl.mhz))) / 100) * 100; panels.push(["ARM clock", "MHz", tl.mhz, lo2, hi2, 600, null]); }
+    if (!panels.length) { card.hidden = true; return; }
+    var W = 900, left = 84, right = 12, panelH = 74, gap = 16, top = 4, H2 = top + panels.length * panelH + (panels.length - 1) * gap + 34;
+    var svg = svgIn($("timeline"), "Temperature, CPU and ARM clock over the run", W, H2, 620);
+    var x = function (sec) { return left + (sec / 60) / N * (W - left - right); };
+    html($("phase-legend"), phases.map(function (p) { return "<span>" + esc(phaseName(p.phase)) + " " + mins(p.end - p.start) + "</span>"; }).join("") + (bands.length ? '<span><i style="background:var(--crit);opacity:.35"></i>Throttled</span>' : ""));
+    panels.forEach(function (p, pi) {
+      var y0 = top + pi * (panelH + gap), y = function (v) { return y0 + panelH - (v - p[3]) / (p[4] - p[3]) * panelH; };
+      phases.forEach(function (ph, i) { if (i % 2 === 0) el("rect", { x: x(ph.start), y: y0, width: Math.max(0, x(ph.end) - x(ph.start)), height: panelH, fill: "var(--band)" }, svg); });
+      bands.forEach(function (b) { el("rect", { x: x(b[0]), y: y0, width: Math.max(1.5, x(b[1]) - x(b[0])), height: panelH, fill: "var(--crit)", "fill-opacity": 0.22 }, svg); });
+      for (var tv = Math.ceil(p[3] / p[5]) * p[5]; tv <= p[4]; tv += p[5]) { el("line", { x1: left, x2: W - right, y1: y(tv), y2: y(tv), class: "gridl" }, svg); el("text", { x: left - 6, y: y(tv) + 4, "text-anchor": "end" }, svg, tv); }
+      if (p[6]) el("line", { x1: left, x2: W - right, y1: y(p[6]), y2: y(p[6]), stroke: "var(--crit)", "stroke-dasharray": "4 3" }, svg);
+      el("text", { x: 0, y: y0 + 12, class: "lbl", "font-weight": 600 }, svg, p[0]);
+      el("text", { x: 0, y: y0 + 26 }, svg, p[1]);
+      var d = "", pen = false;
+      p[2].forEach(function (v, i) { if (!isNum(v)) { pen = false; return; } d += (pen ? "L" : "M") + x(T[i]).toFixed(1) + "," + y(Math.max(p[3], Math.min(p[4], v))).toFixed(1); pen = true; });
+      el("path", { d: d, fill: "none", stroke: "var(--s1)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+    });
+    var yb = top + panels.length * panelH + (panels.length - 1) * gap;
+    phases.forEach(function (ph) { if (x(ph.end) - x(ph.start) > 46) el("text", { x: (x(ph.start) + x(ph.end)) / 2, y: yb + 14, "text-anchor": "middle", "font-size": 10.5 }, svg, phaseName(ph.phase)); });
+    var tickStep = N > 120 ? 30 : N > 40 ? 15 : N > 12 ? 5 : N > 4 ? 2 : 1;
+    for (var m = 0; m <= N + 1e-9; m += tickStep) el("text", { x: x(m * 60), y: yb + 28, "text-anchor": "middle" }, svg, Math.round(m) + " min");
+    var cross = el("line", { x1: 0, x2: 0, y1: top, y2: yb - gap, stroke: "var(--faint)", visibility: "hidden" }, svg);
+    var hit = el("rect", { x: left, y: top, width: W - left - right, height: yb - top, class: "hit" }, svg);
+    hit.addEventListener("mousemove", function (ev) {
+      var r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) / r.width * W;
+      var sec = Math.max(0, Math.min(Nsec, (sx - left) / (W - left - right) * Nsec)), k = 0, best = 1e18;
+      for (var i = 0; i < T.length; i++) { var dd = Math.abs(T[i] - sec); if (dd < best) { best = dd; k = i; } }
+      cross.setAttribute("x1", x(sec)); cross.setAttribute("x2", x(sec)); cross.setAttribute("visibility", "visible");
+      var ph = phases.filter(function (p) { return sec >= p.start && sec < p.end; })[0];
+      var bits = [];
+      if (isNum((tl.temp || [])[k])) bits.push(tl.temp[k].toFixed(1) + " °C");
+      if (isNum((tl.cpu || [])[k])) bits.push("CPU " + Math.round(tl.cpu[k]) + "%");
+      if (isNum((tl.mhz || [])[k])) bits.push(Math.round(tl.mhz[k]) + " MHz");
+      var thr = bands.some(function (b) { return sec >= b[0] && sec <= b[1]; });
+      tip.innerHTML = "<b>" + (sec / 60).toFixed(1) + " min" + (ph ? " · " + esc(phaseName(ph.phase)) : "") + "</b><br>" + bits.join(" · ") + (thr ? "<br>throttled" : "");
+      tip.hidden = false; place(ev);
+    });
+    hit.addEventListener("mouseleave", function () { tip.hidden = true; cross.setAttribute("visibility", "hidden"); });
+  })();
+
+  /* ---------- 6 Answers to read first ---------- */
+  (function worst() {
+    var w = D.worst || [], box = $("worst");
+    if (!w.length) { note(box, "Nothing to show: no wrong answers, or the answers were not judged."); return; }
+    var t = document.createElement("table"), hd = document.createElement("thead"), tr = document.createElement("tr");
+    ["Tag", "Dataset", "Question", "Gold", "Your answer"].forEach(function (h) { var th = document.createElement("th"); th.textContent = h; tr.appendChild(th); });
+    hd.appendChild(tr); t.appendChild(hd);
+    var tb = document.createElement("tbody");
+    w.forEach(function (r) {
+      var row = document.createElement("tr"), tg = TAGS[r.tag] || [r.tag, "warn"], c = document.createElement("td"), chip = document.createElement("span");
+      chip.className = "chip " + tg[1]; chip.textContent = tg[0]; c.appendChild(chip); row.appendChild(c);
+      [packName(r.pack), r.question, r.gold, r.answer].forEach(function (v) { var td = document.createElement("td"); td.textContent = v == null ? "" : v; row.appendChild(td); });
+      tb.appendChild(row);
+    });
+    t.appendChild(tb); box.appendChild(t);
+  })();
+
+  /* ---------- notes ---------- */
+  (function notes() {
+    var n = $("notes");
+    if (!NOTES.length) { n.hidden = true; return; }
+    var ul = document.createElement("ul");
+    NOTES.forEach(function (s) { var li = document.createElement("li"); li.textContent = s; ul.appendChild(li); });
+    var h = document.createElement("small"); h.textContent = "Notes from scoring"; n.appendChild(h); n.appendChild(ul);
+  })();
+})();
+</script>
+</body>
+</html>
