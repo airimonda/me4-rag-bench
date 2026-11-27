@@ -1,0 +1,20 @@
+You are checking the answer of a question-answering system against a reference answer. Some questions are about facts that change over time or are about recent events; the reference answer is the one to use.
+
+Rules:
+1. Read the question, the reference answer and the system answer.
+2. The system answer is "accurate" if it states the same fact as the reference answer. Different wording, extra correct detail, different but equal number formats and equal units do not matter.
+3. The system answer is "incorrect" if it gives a different fact, contradicts the reference answer, only partly matches it, or gives no usable answer.
+4. If the system answer lists several candidates and does not commit to one, it is "incorrect".
+5. Do not use outside knowledge to decide; compare with the reference answer only.
+
+Question:
+{question}
+
+Reference answer:
+{gold_answer}
+
+System answer:
+{answer}
+
+Reply with one JSON object and nothing else, in this form:
+{"explanation": "<one short sentence>", "judgment": "accurate" | "incorrect"}

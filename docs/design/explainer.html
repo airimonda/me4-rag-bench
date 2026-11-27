@@ -1,0 +1,701 @@
+<title>Class RAG Benchmark</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column (max 72rem) of stacked sections; each layer keeps its own colour so the 3-layer idea reads at a glance. */
+:root {
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --fg: #17212b;
+  --muted: #566573;
+  --line: #d9e0e7;
+  --accent: #0f6e78;
+  --accent-soft: #e2f1f2;
+  --l1: #2f62c9; --l1-soft: #e6edfb;
+  --l2: #7a46c2; --l2-soft: #f0e9fa;
+  --l3: #b4581a; --l3-soft: #fbeee4;
+  --ok: #1d7f4e; --ok-soft: #e3f4ea;
+  --part: #a26a00; --part-soft: #fbf1d9;
+  --no: #8b96a1; --no-soft: #eef1f4;
+  --warn: #b3261e; --warn-soft: #fbe7e5;
+  --code-bg: #eef2f6;
+  --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --surface: #161e26; --fg: #e4eaf0; --muted: #9aa8b5; --line: #2a3540;
+    --accent: #4fc0c9; --accent-soft: #173238;
+    --l1: #7ea4f2; --l1-soft: #1b2740; --l2: #b896ea; --l2-soft: #2a2140; --l3: #eda06b; --l3-soft: #3a2618;
+    --ok: #5ccf92; --ok-soft: #173323; --part: #e6b54d; --part-soft: #3a2e12; --no: #77848f; --no-soft: #1f2830;
+    --warn: #f08a80; --warn-soft: #3d1c19; --code-bg: #1c262f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #161e26; --fg: #e4eaf0; --muted: #9aa8b5; --line: #2a3540;
+  --accent: #4fc0c9; --accent-soft: #173238;
+  --l1: #7ea4f2; --l1-soft: #1b2740; --l2: #b896ea; --l2-soft: #2a2140; --l3: #eda06b; --l3-soft: #3a2618;
+  --ok: #5ccf92; --ok-soft: #173323; --part: #e6b54d; --part-soft: #3a2e12; --no: #77848f; --no-soft: #1f2830;
+  --warn: #f08a80; --warn-soft: #3d1c19; --code-bg: #1c262f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 2.5rem 4rem;
+}
+.wrap { max-width: 72rem; margin: 0 auto; display: grid; gap: 3.5rem; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: 1.6rem; font-weight: 600; }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--f-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { font-size: 1.1rem; color: var(--muted); }
+section { display: grid; gap: 1.25rem; min-width: 0; }
+.stack { display: grid; gap: 0.75rem; }
+code, .mono { font-family: var(--f-mono); font-size: 0.85em; }
+code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* hero */
+header.hero { display: grid; gap: 1rem; }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.25rem; }
+.fact { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0.8rem 1rem; display: grid; gap: 0.15rem; }
+.fact .n { font-family: var(--f-display); font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); line-height: 1.15; }
+.fact .l { font-size: 0.85rem; color: var(--muted); }
+.pipe { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
+.pipe .step { border-radius: 10px; padding: 1rem 1.1rem; display: grid; gap: 0.35rem; border: 1px solid var(--line); background: var(--surface); }
+.pipe .step .tag { font-family: var(--f-mono); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.pipe .step h3 { font-size: 1.05rem; }
+.pipe .step p { font-size: 0.9rem; color: var(--muted); }
+.pipe .s1 { border-top: 4px solid var(--l1); } .pipe .s1 .tag { color: var(--l1); }
+.pipe .s2 { border-top: 4px solid var(--l2); } .pipe .s2 .tag { color: var(--l2); }
+.pipe .s3 { border-top: 4px solid var(--l3); } .pipe .s3 .tag { color: var(--l3); }
+.pipe .q { font-family: var(--f-mono); font-size: 0.8rem; color: var(--fg); }
+
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 0.8rem 1rem; border-radius: 0 8px 8px 0; font-size: 0.93rem; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+
+/* dataset packs */
+.packs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.pack { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem; display: grid; gap: 0.6rem; align-content: start; min-width: 0; }
+.pack .meta { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip { font-family: var(--f-mono); font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
+.pack h4 { margin: 0; font-family: var(--f-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.pack ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.25rem; font-size: 0.9rem; }
+.pack .weak li { color: var(--muted); }
+.checks { margin: 0; padding-left: 1.3rem; display: grid; gap: 0.3rem; }
+
+/* architecture picker */
+.arch-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.arch-buttons button {
+  font: inherit; font-size: 0.88rem; cursor: pointer; padding: 0.45rem 0.85rem; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+}
+.arch-buttons button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+.arch-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.arch-cell { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; display: grid; gap: 0.4rem; align-content: start; min-width: 0; }
+.arch-cell .tag { font-family: var(--f-mono); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.arch-cell:nth-child(1) .tag { color: var(--l1); }
+.arch-cell:nth-child(2) .tag { color: var(--l2); }
+.arch-cell:nth-child(3) .tag { color: var(--l3); }
+.arch-cell p { font-size: 0.92rem; }
+#arch-summary { font-size: 0.95rem; color: var(--muted); }
+
+/* steps */
+ol.steps { margin: 0; padding-left: 1.3rem; display: grid; gap: 0.6rem; }
+ol.steps li { max-width: 72ch; }
+
+/* layer sections */
+.layer { border-radius: 14px; padding: 1.5rem; display: grid; gap: 1.25rem; border: 1px solid var(--line); background: var(--surface); }
+.layer.l1 { border-left: 6px solid var(--l1); }
+.layer.l2 { border-left: 6px solid var(--l2); }
+.layer.l3 { border-left: 6px solid var(--l3); }
+.layer .head { display: grid; gap: 0.35rem; }
+.layer.l1 .eyebrow { color: var(--l1); } .layer.l2 .eyebrow { color: var(--l2); } .layer.l3 .eyebrow { color: var(--l3); }
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+.cols > div { min-width: 0; display: grid; gap: 0.4rem; align-content: start; }
+.cols h4 { margin: 0; font-family: var(--f-mono); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.cols ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; font-size: 0.93rem; }
+
+/* score cards */
+.scores { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; }
+.score { border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; display: grid; gap: 0.3rem; background: var(--bg); align-content: start; }
+.score .bench { font-family: var(--f-mono); font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.score .num { font-family: var(--f-display); font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.layer.l1 .score .num { color: var(--l1); } .layer.l2 .score .num { color: var(--l2); } .layer.l3 .score .num { color: var(--l3); }
+.score .what { font-size: 0.85rem; }
+.score .who { font-size: 0.8rem; color: var(--muted); }
+.conf { justify-self: start; font-family: var(--f-mono); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.15rem 0.5rem; border-radius: 999px; }
+.conf.v { background: var(--ok-soft); color: var(--ok); }
+.conf.s { background: var(--part-soft); color: var(--part); }
+.conf.t { background: var(--no-soft); color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.85rem; color: var(--muted); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+th, td { padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+thead th { font-family: var(--f-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); background: var(--bg); }
+tbody tr:last-child td { border-bottom: 0; }
+td.c, th.c { text-align: center; }
+td.r, th.r { text-align: right; }
+tr.total td { font-weight: 600; background: var(--bg); }
+tr.hl td { background: var(--accent-soft); }
+.cov td:first-child { min-width: 13rem; }
+.cov tr.grp td { background: var(--bg); font-family: var(--f-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+.dot { display: inline-grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 6px; font-family: var(--f-mono); font-size: 0.8rem; font-weight: 600; }
+.dot.y { background: var(--ok-soft); color: var(--ok); }
+.dot.p { background: var(--part-soft); color: var(--part); }
+.dot.n { background: var(--no-soft); color: var(--no); }
+.dot.q { background: transparent; border: 1px dashed var(--no); color: var(--muted); }
+.axis-n { font-family: var(--f-mono); font-weight: 600; color: var(--accent); }
+
+/* diagnosis */
+.diag { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.diag > div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; display: grid; gap: 0.4rem; align-content: start; }
+.diag .rule { font-family: var(--f-mono); font-size: 0.8rem; }
+.pass { color: var(--ok); font-weight: 600; } .fail { color: var(--warn); font-weight: 600; }
+
+/* health */
+.health { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.75rem; }
+.health > div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; display: grid; gap: 0.3rem; align-content: start; }
+.health .src { font-family: var(--f-mono); font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
+.health p { font-size: 0.9rem; }
+
+pre { margin: 0; background: var(--code-bg); border-radius: 10px; padding: 1rem; overflow-x: auto; font-family: var(--f-mono); font-size: 0.8rem; line-height: 1.55; }
+ol.rules { margin: 0; padding-left: 1.3rem; display: grid; gap: 0.5rem; }
+ol.rules li { max-width: 70ch; }
+.small { font-size: 0.8rem; color: var(--muted); }
+.open-list { display: grid; gap: 0.4rem; margin: 0; padding-left: 1.1rem; }
+footer { font-size: 0.82rem; color: var(--muted); display: grid; gap: 0.5rem; border-top: 1px solid var(--line); padding-top: 1.5rem; }
+footer ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.2rem; }
+
+@media (max-width: 760px) {
+  .pipe, .arch-grid, .cols, .diag, .packs { grid-template-columns: 1fr; }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .layer { padding: 1.1rem; }
+}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">AI 231 · document QA · runs on a Raspberry Pi</div>
+  <h1>Class RAG Benchmark</h1>
+  <p class="lede">A plug-and-play benchmark that every student runs on its own Raspberry Pi, whatever its architecture. It scores your system on open datasets that already have published state-of-the-art results, records the Pi's health while it works, and keeps the bill small.</p>
+  <div class="facts">
+    <div class="fact"><span class="n">~1.15 GB</span><span class="l">data on the Pi, 3 packs</span></div>
+    <div class="fact"><span class="n">7</span><span class="l">eval axes, no two measure the same thing</span></div>
+    <div class="fact"><span class="n">~1.5 h</span><span class="l">one official run on a Pi 4, judged overnight</span></div>
+    <div class="fact"><span class="n">~$4.70</span><span class="l">per person, all testing, flash-class model, comparable to published results</span></div>
+  </div>
+  <div class="pipe" aria-label="The three layers">
+    <div class="step s1">
+      <span class="tag">Layer 1 · Retrieval</span>
+      <h3>Did it find the right evidence?</h3>
+      <p class="q">question → ranked pages</p>
+      <p>No language model involved. Scored against gold evidence pages.</p>
+    </div>
+    <div class="step s2">
+      <span class="tag">Layer 2 · Generation</span>
+      <h3>Given the right evidence, is the answer right?</h3>
+      <p class="q">question + gold pages → answer</p>
+      <p>Retrieval switched off. Any error left is the generator's.</p>
+    </div>
+    <div class="step s3">
+      <span class="tag">Layer 3 · End-to-end</span>
+      <h3>Does the whole system answer, cite and not make things up?</h3>
+      <p class="q">documents + question → answer + citations</p>
+      <p>Your real pipeline, as it runs on demo day.</p>
+    </div>
+  </div>
+</header>
+
+<section aria-labelledby="data-h">
+  <div class="stack">
+    <div class="eyebrow">Datasets</div>
+    <h2 id="data-h">Three packs, and why these</h2>
+    <p>A dataset made the cut only if it passed all six checks:</p>
+    <ol class="checks">
+      <li><strong>Open license</strong>, so the whole class can download and use it.</li>
+      <li><strong>Published SOTA results</strong>, so you can tell whether your system is good or bad.</li>
+      <li><strong>Gold evidence pages and gold answers</strong>, so the three layers can be scored apart.</li>
+      <li><strong>Fits the Pi</strong>: about 1 GB in total, and no OCR or captioning tokens at ingest.</li>
+      <li><strong>Looks like demo day</strong>: real documents, charts, tables, answers spread over pages.</li>
+      <li><strong>No overlap</strong>: each pack tests something no other pack tests.</li>
+    </ol>
+  </div>
+  <div class="packs">
+    <article class="pack">
+      <h3>ViDoRe V3 · Human Resources</h3>
+      <div class="meta"><span class="chip">442 MB</span><span class="chip">14 docs</span><span class="chip">1,110 pages</span><span class="chip">318 questions</span><span class="chip">CC-BY-4.0</span></div>
+      <h4>Why</h4>
+      <ul>
+        <li>EU labour-market reports full of charts and tables</li>
+        <li>Each page ships as an image and as extracted markdown (~780 tokens), so text and image systems both enter</li>
+        <li>Gold pages (~5 per question) and gold answers</li>
+        <li>Live MTEB leaderboard; answer results in the ACL 2026 paper</li>
+      </ul>
+      <h4>Weak points</h4>
+      <ul class="weak"><li>Questions partly LLM-generated, then human-checked; real people phrase things more loosely</li></ul>
+    </article>
+    <article class="pack">
+      <h3>ViDoRe V3 · Computer Science</h3>
+      <div class="meta"><span class="chip">513 MB</span><span class="chip">2 docs</span><span class="chip">1,360 pages</span><span class="chip">215 questions</span><span class="chip">CC-BY-4.0</span></div>
+      <h4>Why</h4>
+      <ul>
+        <li>Long textbooks with equations, code and figures</li>
+        <li>A different kind of content from HR: dense, technical, few documents but many pages</li>
+        <li>Whole task used, so the published per-task numbers still apply</li>
+      </ul>
+      <h4>Weak points</h4>
+      <ul class="weak"><li>Only 2 documents, so few distractor files (the Pharma task has 52 but adds ~240 MB)</li></ul>
+    </article>
+    <article class="pack">
+      <h3>CRAG · fixed subset</h3>
+      <div class="meta"><span class="chip">~200 MB</span><span class="chip">400 of 1,335 public-test questions</span><span class="chip">5 web pages each</span><span class="chip">CC BY-NC 4.0</span></div>
+      <h4>Why</h4>
+      <ul>
+        <li>The only benchmark that scores a made-up answer (−1) below "I don't know" (0), so hallucination is measured directly</li>
+        <li>Includes false-premise, time-sensitive and multi-hop questions</li>
+        <li>Noisy HTML pages stand in for "use the web when the documents are not enough", offline and identical on every Pi</li>
+        <li>Published results from industry systems and the KDD Cup 2024</li>
+      </ul>
+      <h4>Weak points</h4>
+      <ul class="weak"><li>Web QA from 2024, not document QA; use the official release, not the Apache-licensed mirror</li><li>Pages are shipped with scripts and styles removed to stay near 200 MB (raw HTML would be over 1 GB)</li><li>The paper never released its judge prompt, so CRAG scores are close to the paper's, not exact</li></ul>
+    </article>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Left out</th><th>Failed check</th><th>Reason</th></tr></thead>
+      <tbody>
+        <tr><td>MMLongBench-Doc</td><td>6 No overlap</td><td>Long multimodal PDFs: the same thing ViDoRe end-to-end already scores</td></tr>
+        <tr><td>UniDoc-Bench</td><td>4 Fits the Pi</td><td>70k pages, far over 1 GB</td></tr>
+        <tr><td>FinanceBench</td><td>6 No overlap, 4 Fits the Pi</td><td>Tables inside PDFs, already covered; the full set of 368 filings is large</td></tr>
+        <tr><td>DocBench</td><td>2 Published SOTA</td><td>Results date from 2024 and cover only older models</td></tr>
+        <tr><td>FRAMES</td><td>5 Looks like demo day</td><td>Wikipedia multi-hop questions, not your documents</td></tr>
+        <tr><td>Other ViDoRe tasks</td><td>4 Fits the Pi</td><td>Any other pair breaks the 1 GB budget; HR + CS is the smallest pair with two different kinds of content</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="axes-h">
+  <div class="stack">
+    <div class="eyebrow">What is measured</div>
+    <h2 id="axes-h">Seven axes, each scored by one source</h2>
+    <p>No two axes score the same thing. If a metric could belong to two axes, it was given to one and removed from the other.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Axis</th><th>Scored by</th><th>Metric</th><th>Nothing else measures it because</th></tr></thead>
+      <tbody>
+        <tr><td class="axis-n">1</td><td>Retrieval</td><td>ViDoRe, all 533 questions</td><td>nDCG@10, Recall@10</td><td>Only axis that scores the search list; no LLM</td></tr>
+        <tr><td class="axis-n">2</td><td>Grounded generation</td><td>ViDoRe, 100 HR + 100 CS sampled questions, gold pages given</td><td>Judge accuracy</td><td>Retrieval is switched off</td></tr>
+        <tr><td class="axis-n">3</td><td>Integration (end-to-end on documents)</td><td>ViDoRe, the same 200 questions</td><td>Accuracy, citation precision</td><td>Scores the whole pipeline; read with 1 and 2 it tells which layer broke</td></tr>
+        <tr><td class="axis-n">4</td><td>Truthfulness</td><td>CRAG, 400 sampled public-test questions</td><td>Accuracy − hallucination (+1 correct, 0 missing, −1 wrong)</td><td>Only axis that penalises made-up answers; ViDoRe has no unanswerable questions</td></tr>
+        <tr><td class="axis-n">5</td><td>Latency</td><td>Harness clock, axes 1, 3 and 4</td><td>Time to first token and total time (p50 / p90), retrieval time, ingest rate</td><td>Only axis about time; measured by the harness, not self-reported</td></tr>
+        <tr><td class="axis-n">6</td><td>Cost</td><td>Token proxy, every run</td><td>Tokens and USD per question</td><td>Only axis about money; time and money are scored apart</td></tr>
+        <tr><td class="axis-n">7</td><td>Pi health</td><td>1 Hz sampler during every run</td><td>Peak temperature, seconds throttled, under-voltage, memory pressure</td><td>Device condition, not answer quality</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="layers-h">
+  <div class="stack">
+    <div class="eyebrow">Score to beat</div>
+    <h2 id="layers-h">The three layers against SOTA</h2>
+    <p>Your system is compared with the published state of the art only, never with other students. Each score below is the best published result on the same data and metric.</p>
+  </div>
+  <div class="tbl-wrap"><table><thead><tr><th>Metric</th><th class="r">Score to beat</th><th>Paper</th><th>Framework</th><th>Model</th></tr></thead><tbody><tr><td><strong>Retrieval · HR</strong><br><span class="small">nDCG@10, English</span></td><td class="r"><strong>65.4</strong></td><td>ViDoRe V3 (Loison et al., arXiv 2601.08620, 2026), Table 9</td><td>Visual multi-vector retriever over page images, no reranker</td><td>llama-nemoretriever-colembed-3b-v2 (NVIDIA)</td></tr><tr><td><strong>Retrieval · CS</strong><br><span class="small">nDCG@10, English</span></td><td class="r"><strong>78.6</strong></td><td>ViDoRe V3, Table 9</td><td>Same retriever</td><td>llama-nemoretriever-colembed-3b-v2 (NVIDIA)</td></tr><tr><td><strong>Gold pages · HR</strong><br><span class="small">% correct</span></td><td class="r"><strong>72.3</strong></td><td>ViDoRe V3, Table 3 (oracle)</td><td>Gold pages given as text, one model call</td><td>Gemini 3 Pro, low thinking</td></tr><tr><td><strong>Gold pages · CS</strong><br><span class="small">% correct</span></td><td class="r"><strong>86.5</strong></td><td>ViDoRe V3, Table 3 (oracle)</td><td>Gold pages given as images, one model call</td><td>Gemini 3 Pro, low thinking</td></tr><tr><td><strong>End-to-end · HR</strong><br><span class="small">% correct</span></td><td class="r"><strong>66.0</strong></td><td>ViDoRe V3, Table 3</td><td>colembed-3b-v2 retrieval, page images to the generator (top-k not stated)</td><td>GPT-5.2 answering</td></tr><tr><td><strong>End-to-end · CS</strong><br><span class="small">% correct</span></td><td class="r"><strong>86.5</strong></td><td>ViDoRe V3, Table 3</td><td>Same pipeline</td><td>GPT-5.2 answering</td></tr><tr><td><strong>Truthfulness · CRAG</strong><br><span class="small">accuracy − hallucination</span></td><td class="r"><strong>7.7</strong></td><td>CRAG (Yang et al., arXiv 2406.04744, 2024), Tables 5 and 11, Task 1</td><td>"Straightforward RAG": snippets of the 5 pages concatenated into a 4K-token window, one call, told to say "I don't know" when unsure</td><td>GPT-4 Turbo (accuracy 35.9, hallucination 28.2)</td></tr></tbody></table></div>
+  <div class="note">CRAG Task 2 and 3 scores (for example 16.2% for GPT-4 Turbo) are higher but use knowledge-graph APIs this pack does not include, so they are not the target. The KDD Cup 2024 winner (36.2%, hidden test set) and Copilot Pro (50.6%, graded by humans) are not comparable either. Newer retrievers on the MTEB leaderboard may beat the ViDoRe numbers; this benchmark uses the paper so that the protocol matches.</div>
+  <div class="stack">
+    <p>The cards below repeat each score inside its layer. The badge says where the number was read.</p>
+    <div class="legend">
+      <span><span class="conf v">Primary</span> from the paper or the benchmark's own page</span>
+      <span><span class="conf s">Secondary</span> summary or vendor post; confirm in the paper</span>
+      <span><span class="conf t">To fill</span> look up before the first run</span>
+    </div>
+  </div>
+
+  <article class="layer l1">
+    <div class="head">
+      <div class="eyebrow">Layer 1 · axis 1</div>
+      <h3>Retrieval quality: can the system retrieve the correct documents?</h3>
+      <p>If the evidence never reaches the model, no model can answer. This layer costs no tokens and tells you whether to work on search or on prompting.</p>
+    </div>
+    <div class="cols">
+      <div><h4>Input / output</h4><ul><li>In: question text</li><li>Out: top-10 page ids, best first</li><li>Gold: the benchmark's evidence pages</li></ul></div>
+      <div><h4>Metrics</h4><ul><li><strong>nDCG@10</strong>: rewards putting the gold page near the top; the leaderboard metric</li><li><strong>Recall@10</strong>: share of gold pages in your top 10</li></ul></div>
+      <div><h4>Comparable because</h4><ul><li>Whole HR and CS tasks, every English query, same metric; compare with the English rows. Newer retrievers on the MTEB leaderboard may score higher</li></ul></div>
+    </div>
+    <div class="scores">
+      <div class="score"><span class="bench">ViDoRe V3 · HR · English</span><span class="num">65.4</span><span class="what">nDCG@10, English queries (the setting this benchmark uses)</span><span class="who">llama-nemoretriever-colembed-3b-v2, paper Table 9</span><span class="conf v">Primary</span></div>
+      <div class="score"><span class="bench">ViDoRe V3 · CS · English</span><span class="num">78.6</span><span class="what">nDCG@10, English queries</span><span class="who">llama-nemoretriever-colembed-3b-v2, paper Table 9</span><span class="conf v">Primary</span></div>
+      <div class="score"><span class="bench">ViDoRe V3 · HR · all languages</span><span class="num">51.7</span><span class="what">nDCG@10 including translated queries; for reference only</span><span class="who">llama-nemoretriever-colembed-3b-v2, paper Table 1</span><span class="conf v">Primary</span></div>
+      <div class="score"><span class="bench">ViDoRe V3 · CS · all languages</span><span class="num">77.1</span><span class="what">nDCG@10 including translated queries; for reference only</span><span class="who">llama-nemoretriever-colembed-3b-v2, paper Table 1</span><span class="conf v">Primary</span></div>
+    </div>
+    <div class="note">Text-only retrievers trail visual and late-interaction retrievers on ViDoRe V3. If your system indexes only extracted text, expect to sit below the leaderboard; the gap tells you whether page images are worth adding.</div>
+  </article>
+
+  <article class="layer l2">
+    <div class="head">
+      <div class="eyebrow">Layer 2 · axis 2</div>
+      <h3>Generation quality: is the answer accurate and grounded in the context it was given?</h3>
+      <p>The harness sends the gold pages straight to your generator and your own search is switched off. Errors here are reading, reasoning or prompt problems, never search problems.</p>
+    </div>
+    <div class="cols">
+      <div><h4>Input / output</h4><ul><li>In: question + gold pages (markdown, images, or both, as your system normally sends)</li><li>Out: answer text</li></ul></div>
+      <div><h4>Metrics</h4><ul><li><strong>Accuracy</strong>: share judged "Correct" by GPT-5.2 (medium reasoning) with the paper's judge prompt (Figure 24)</li></ul></div>
+      <div><h4>Why</h4><ul><li>The paper publishes accuracy with perfect retrieval, so the ceiling is known</li></ul></div>
+    </div>
+    <div class="scores">
+      <div class="score"><span class="bench">ViDoRe V3 · HR · gold pages</span><span class="num">72.3%</span><span class="what">Accuracy with perfect retrieval, text context</span><span class="who">Gemini 3 Pro, low thinking; image 71.1%, hybrid 70.4% (Table 3)</span><span class="conf v">Primary</span></div>
+      <div class="score"><span class="bench">ViDoRe V3 · CS · gold pages</span><span class="num">86.5%</span><span class="what">Accuracy with perfect retrieval, image context</span><span class="who">Gemini 3 Pro, low thinking; hybrid 86.0%, text 80.9% (Table 3)</span><span class="conf v">Primary</span></div>
+    </div>
+  </article>
+
+  <article class="layer l3">
+    <div class="head">
+      <div class="eyebrow">Layer 3 · axes 3 and 4</div>
+      <h3>End-to-end quality: does the full pipeline answer correctly, give evidence, and avoid hallucination?</h3>
+      <p>This is what the checkers see. It adds ingest, the agent loop, time limits and citations on top of Layers 1 and 2. Correctness on documents is axis 3 (ViDoRe); hallucination is axis 4 (CRAG).</p>
+    </div>
+    <div class="cols">
+      <div><h4>Input / output</h4><ul><li>In: the pack's documents (ingested once), then the questions</li><li>Out: answer + cited pages</li></ul></div>
+      <div><h4>Metrics</h4><ul><li><strong>Axis 3</strong>: accuracy, citation precision (cited pages that are gold)</li><li><strong>Axis 4</strong>: truthfulness, hallucination rate, missing rate</li></ul></div>
+      <div><h4>Comparable because</h4><ul><li>ViDoRe: a fixed random sample of the English questions, the paper's judge and prompt</li><li>CRAG: a fixed random sample of the public test set and CRAG's own auto-eval scoring, judged by the two model families the paper used</li><li>Every score carries its 95% error bar (see Sampling)</li></ul></div>
+    </div>
+    <div class="scores">
+      <div class="score"><span class="bench">ViDoRe V3 · HR · end-to-end</span><span class="num">66.0%</span><span class="what">llama-nemoretriever-colembed-3b-v2 retrieval, page images, GPT-5.2 answers</span><span class="who">Paper Table 3, best average pipeline</span><span class="conf v">Primary</span></div>
+      <div class="score"><span class="bench">ViDoRe V3 · CS · end-to-end</span><span class="num">86.5%</span><span class="what">Same pipeline</span><span class="who">Paper Table 3</span><span class="conf v">Primary</span></div>
+      <div class="score"><span class="bench">CRAG · Task 1 · straightforward RAG</span><span class="num">7.7%</span><span class="what">Best truthfulness with 5 web pages, public test, auto-eval (accuracy 35.9%, hallucination 28.2%)</span><span class="who">GPT-4 Turbo, paper Tables 5 and 11</span><span class="conf v">Primary</span></div>
+      <div class="score"><span class="bench">CRAG · LLM only</span><span class="num">20.0%</span><span class="what">No retrieval at all; RAG that cannot beat this is adding noise</span><span class="who">GPT-4 Turbo, paper Table 5</span><span class="conf v">Primary</span></div>
+    </div>
+    <div class="note">Two CRAG numbers you may see elsewhere are <strong>not</strong> comparable: the KDD Cup 2024 winner's 36.2% was scored on the hidden private test set, and Copilot Pro's 50.6% (best industry system) was graded by humans with live web access. ViDoRe Table 3 does not say which query languages it used; this benchmark uses English only.</div>
+  </article>
+</section>
+
+<section aria-labelledby="plug-h">
+  <div class="stack">
+    <div class="eyebrow">Plug and play</div>
+    <h2 id="plug-h">Running it on your Pi</h2>
+  </div>
+  <ol class="steps">
+    <li><strong>Install.</strong> Clone the benchmark repo on the Pi and run <code>./install.sh</code>. It downloads the three packs, checks their sha256 sums and checks for 2.5 GB of free disk.</li>
+    <li><strong>Expose your system.</strong> Run a small HTTP server with three endpoints, in any language:
+      <code>POST /ingest {dir}</code>, <code>POST /retrieve {q, k}</code> returning page ids, and <code>POST /answer {q, context?}</code> returning <code>{answer, cited}</code>. Stream the answer (server-sent events or chunked text) so the harness can time the first token; a non-streaming server is scored with first token = total time.</li>
+    <li><strong>Count tokens honestly.</strong> Point your LLM client's base URL at the harness's local proxy (any OpenAI-style API). It counts tokens and cost itself, so nobody self-reports.</li>
+    <li><strong>Run.</strong> <code>crb run --adapter http://localhost:8000</code> runs every axis and writes <code>results.jsonl</code>, <code>health.csv</code> and <code>report.html</code> with your numbers next to the SOTA rows. <code>crb run --smoke</code> runs retrieval (free) plus 30 LLM questions with a cheap judge for development; <code>crb run --official</code> runs the full comparable protocol.</li>
+    <li><strong>Compare.</strong> <code>crb baseline</code> runs the shared reference system (BM25 over the page markdown + one fixed cheap LLM) as a floor to check your setup against.</li>
+  </ol>
+  <div class="stack">
+    <h3>How your architecture plugs in</h3>
+    <p>Pick the design closest to yours.</p>
+  </div>
+  <div class="arch-buttons" role="group" aria-label="Architecture">
+    <button type="button" id="arch-hybrid" data-arch="hybrid" aria-pressed="true">Text chunks (BM25 / vectors / hybrid)</button>
+    <button type="button" id="arch-visual" data-arch="visual" aria-pressed="false">Page images (ColPali-style)</button>
+    <button type="button" id="arch-agent" data-arch="agent" aria-pressed="false">Agent with tools</button>
+    <button type="button" id="arch-long" data-arch="long" aria-pressed="false">Long context, no retriever</button>
+    <button type="button" id="arch-graph" data-arch="graph" aria-pressed="false">Graph / knowledge-graph RAG</button>
+  </div>
+  <p id="arch-summary"></p>
+  <div class="arch-grid">
+    <div class="arch-cell"><span class="tag">Layer 1 · Retrieval</span><p id="arch-l1"></p></div>
+    <div class="arch-cell"><span class="tag">Layer 2 · Generation</span><p id="arch-l2"></p></div>
+    <div class="arch-cell"><span class="tag">Layer 3 · End-to-end</span><p id="arch-l3"></p></div>
+  </div>
+  <div class="note">Hits are counted per <strong>page</strong> (ViDoRe) and per <strong>web page</strong> (CRAG). Chunk ids differ between systems; pages do not. Map your chunks back before returning them.</div>
+</section>
+
+<section aria-labelledby="lat-h">
+  <div class="stack">
+    <div class="eyebrow">Axis 5</div>
+    <h2 id="lat-h">Latency</h2>
+    <p>Watson-style assistants are judged live: a right answer after 30 seconds still loses the room. The harness on the Pi holds the stopwatch, so every system is timed the same way and nobody reports their own numbers.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Metric</th><th>Start of clock</th><th>End of clock</th><th>Measured on</th><th>Reported as</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td><strong>Time to first token</strong> (headline)</td><td>Harness sends <code>/answer</code></td><td>First byte of the answer arrives</td><td>Axes 3 and 4, 600 questions</td><td>p50, p90, max</td></tr>
+        <tr><td>Total answer time</td><td>Harness sends <code>/answer</code></td><td>Last byte arrives</td><td>Axes 3 and 4</td><td>p50, p90, max</td></tr>
+        <tr><td>Retrieval time</td><td>Harness sends <code>/retrieve</code></td><td>Page list arrives</td><td>Axis 1, 533 questions</td><td>p50, p90</td></tr>
+        <tr><td>Ingest rate</td><td>Harness sends <code>/ingest</code></td><td>Server reports ready</td><td>Each pack, once</td><td>Pages per minute, total minutes</td></tr>
+        <tr><td>Cold start</td><td>First question after ingest</td><td>Its last byte</td><td>One question, not in p50 / p90</td><td>Seconds</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ol class="rules">
+    <li><strong>One question at a time.</strong> No overlapping requests, so one answer never slows another.</li>
+    <li><strong>Warm-up excluded.</strong> The first 3 questions after ingest are timed but left out of p50 and p90; the first one is reported as cold start.</li>
+    <li><strong>p90, not the mean.</strong> The mean hides the slow tail that people remember. p90 is the time 9 in 10 answers beat.</li>
+    <li><strong>Gold-page runs are not timed.</strong> Axis 2 skips your search, so its times say nothing about your system.</li>
+    <li><strong>Network shown beside it.</strong> The health sampler logs the round trip to your LLM host, so a slow model and slow Wi-Fi can be told apart.</li>
+  </ol>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Time to first token, p90</th><th>Rating</th><th>Why this line</th></tr></thead>
+      <tbody>
+        <tr><td>≤ 1 s</td><td>Feels instant</td><td>About the limit for a reply to feel like conversation</td></tr>
+        <tr><td>≤ 3 s</td><td>Good</td><td>Noticeable pause, attention held</td></tr>
+        <tr><td>≤ 10 s</td><td>Acceptable</td><td>About the limit for keeping a listener's attention</td></tr>
+        <tr><td>&gt; 10 s</td><td>Too slow for a live demo</td><td>Listeners look away or ask again</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note">No score to beat from the papers: neither ViDoRe V3 nor CRAG publishes latency. The bands above come from the classic 1 s and 10 s response-time limits in usability research. Latency and accuracy sit side by side in the report and are never merged into one score.</div>
+</section>
+
+<section aria-labelledby="health-h">
+  <div class="stack">
+    <div class="eyebrow">Axis 7</div>
+    <h2 id="health-h">Pi health, sampled every second</h2>
+    <p>A system that is fast for five minutes and then throttles will lose the demo. The sampler runs for the whole benchmark, so a full run doubles as a heat soak test.</p>
+  </div>
+  <div class="health">
+    <div><h3>Temperature</h3><p class="src">vcgencmd measure_temp</p><p>Peak and mean SoC temperature. Soft limit starts at 80 °C on a Pi 4.</p></div>
+    <div><h3>Throttling</h3><p class="src">vcgencmd get_throttled</p><p>Decoded flags: under-voltage, clock capped, throttled, soft temperature limit. Both "now" and "since boot".</p></div>
+    <div><h3>Clock and voltage</h3><p class="src">vcgencmd measure_clock arm · measure_volts core · pmic_read_adc (Pi 5)</p><p>Seconds below full clock speed; power draw on a Pi 5.</p></div>
+    <div><h3>CPU and memory</h3><p class="src">/proc/stat · /proc/meminfo · /proc/loadavg</p><p>Per-core CPU, load, RAM, swap, and your server process's memory.</p></div>
+    <div><h3>Disk</h3><p class="src">/proc/diskstats · statvfs</p><p>Free space and SD card read/write rate during ingest.</p></div>
+    <div><h3>Network</h3><p class="src">TCP connect time to your LLM host</p><p>Separates a slow model from a slow Wi-Fi link.</p></div>
+  </div>
+  <p>The report also records the Pi model, RAM, OS version, and whether a cooler is fitted (asked once at install).</p>
+</section>
+
+<section aria-labelledby="samp-h">
+  <div class="stack">
+    <div class="eyebrow">Sampling</div>
+    <h2 id="samp-h">Why a sample still compares with SOTA</h2>
+    <p>A random sample from the full question set estimates the full-set score with no bias: on average it is neither higher nor lower. What sampling adds is uncertainty, shown as a 95% error bar. Your score is compared with a published number by checking whether the published number falls inside your bar.</p>
+    <p>Every student gets the same fixed sample, so the class instructions, seed and error bars are the same for all.</p>
+  </div>
+  <ol class="rules">
+    <li><strong>Random, stratified, one published seed.</strong> The sample keeps the full set's mix of question types (chart, table, multi-hop, numerical). The question ids are in the repo.</li>
+    <li><strong>Drawn once.</strong> Never redraw until a score looks good, and never tune on the sample.</li>
+    <li><strong>Same protocol as the paper.</strong> Same judge, prompt and scoring. Only the number of questions changes.</li>
+    <li><strong>Always report the error bar.</strong> "Beats SOTA" needs your whole bar above the published number; "below SOTA" needs it all below.</li>
+  </ol>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Pack (full size)</th><th class="r">Sample</th><th class="r">95% error bar</th><th class="r">SOTA it is compared with</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td>ViDoRe HR (318)</td><td class="r">100</td><td class="r">±7.7 points</td><td class="r">66.0% end-to-end</td></tr>
+        <tr><td>ViDoRe HR</td><td class="r">200</td><td class="r">±4.0</td><td class="r"></td></tr>
+        <tr class="hl"><td>ViDoRe CS (215)</td><td class="r">100</td><td class="r">±4.9</td><td class="r">86.5% end-to-end</td></tr>
+        <tr><td>CRAG (1,335)</td><td class="r">200</td><td class="r">±10.2</td><td class="r">7.7% truthfulness</td></tr>
+        <tr class="hl"><td>CRAG</td><td class="r">400</td><td class="r">±6.5</td><td class="r"></td></tr>
+        <tr><td>CRAG</td><td class="r">1,335</td><td class="r">0 (judge noise only)</td><td class="r"></td></tr>
+        <tr class="hl"><td>Retrieval, axis 1 (533)</td><td class="r">all, free</td><td class="r">0</td><td class="r">nDCG@10 65.4 / 78.6</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note">Highlighted rows are the default official run. Bars assume a score near SOTA and include the finite-pool correction, which is why they shrink fast as the sample nears the full set. CRAG needs more questions because each answer scores +1, 0 or −1, which spreads results widely; at 200 a true 16% could read anywhere from 6% to 26%. A sample says "near SOTA" or "clearly below"; a close win (say 68% against 66% on HR) needs the full set: <code>crb run --official --full</code>.</div>
+</section>
+
+<section aria-labelledby="cost-h">
+  <div class="stack">
+    <div class="eyebrow">Axis 6 · cost</div>
+    <h2 id="cost-h">Token and dollar estimate</h2>
+    <p>The official run uses the papers' own judges on a fixed sample, so it stays comparable while costing a third of the full sets. Practice runs are cheaper still because nobody compares them with a paper. Ingest costs no tokens: ViDoRe pages come with their text, CRAG pages are HTML, and embeddings run on the Pi.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Official run, once per person</th><th class="r">Calls</th><th class="r">Input tokens</th><th class="r">Output tokens</th><th>Assumption</th></tr></thead>
+      <tbody>
+        <tr><td>Axis 1 retrieval</td><td class="r">533</td><td class="r">0</td><td class="r">0</td><td>No LLM, always the full set</td></tr>
+        <tr><td>Axis 2 gold pages</td><td class="r">200</td><td class="r">0.94M</td><td class="r">0.20M</td><td>~5 pages × 780 tokens + prompt</td></tr>
+        <tr><td>Axis 3 ViDoRe end-to-end</td><td class="r">200</td><td class="r">2.0M</td><td class="r">0.30M</td><td>~2 model calls per question</td></tr>
+        <tr><td>Axis 4 CRAG</td><td class="r">400</td><td class="r">3.2M</td><td class="r">0.40M</td><td>Retrieved chunks from 5 pages</td></tr>
+        <tr><td>ViDoRe judge: GPT-5.2, medium reasoning</td><td class="r">400</td><td class="r">0.28M</td><td class="r">0.16M</td><td>Batch price, ~400 reasoning tokens per verdict</td></tr>
+        <tr><td>CRAG judges: gpt-3.5-turbo + Llama 3.1 70B, averaged</td><td class="r">800</td><td class="r">0.56M</td><td class="r">0.04M</td><td>~700 in, ~50 out per verdict</td></tr>
+        <tr class="total"><td>Total, official run</td><td class="r"></td><td class="r">~7.0M</td><td class="r">~1.1M</td><td>≈ 8M tokens</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Your answer model</th><th class="r">Price in / out per M</th><th class="r">Official run</th><th class="r">Practice</th><th class="r">Total per person</th><th class="r">Full sets instead</th></tr></thead>
+      <tbody>
+        <tr><td>anthropic/claude-haiku-5.5</td><td class="r">$0.10 / $0.50</td><td class="r">$2.97</td><td class="r">~$1.00</td><td class="r"><strong>~$4.00</strong></td><td class="r">~$9.60</td></tr>
+        <tr class="hl"><td>minimax/minimax-m3.1-flash</td><td class="r">$0.15 / $0.60</td><td class="r">$3.36</td><td class="r">~$1.30</td><td class="r"><strong>~$4.70</strong></td><td class="r">~$11.10</td></tr>
+        <tr><td>openai/gpt-5-mini</td><td class="r">$0.25 / $2.00</td><td class="r">$5.24</td><td class="r">~$2.50</td><td class="r"><strong>~$7.70</strong></td><td class="r">~$17.90</td></tr>
+        <tr><td>anthropic/claude-sonnet-5.5</td><td class="r">$2.00 / $10.00</td><td class="r">$23.18</td><td class="r">~$9.00</td><td class="r"><strong>~$32</strong></td><td class="r">~$78</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="stack">
+    <p><strong>Practice</strong> = unlimited retrieval-only runs (free) + 10 smoke runs of 30 LLM questions + 2 mid-size runs of 100 questions per axis, all with a cheap judge, about 3M tokens. Practice scores are marked "not comparable" in the report.</p>
+    <p><strong>Judges cost $1.90 per person</strong> whatever model you use: $1.36 for GPT-5.2 on ViDoRe (batch price, results within 24 h) and $0.54 for the two CRAG judges. If the class key pays the judges, your own share is about $2.80 with minimax-m3.1-flash, $2.10 with haiku-5.5.</p>
+    <p><strong>Full sets</strong> (all 533 ViDoRe and all 1,335 CRAG questions, about 24M tokens) remove the error bars; the last column shows what that costs. Use it only when a claim depends on a close margin.</p>
+  </div>
+  <div class="note warn">The estimate moves with your design. Sending page images instead of text adds 1.5–2× input on axes 2–3. Heavy reasoning can triple output tokens. Long-context systems that paste whole documents can cost 10× more; the harness caps context at 32k tokens per question and reports how often the cap was hit. Prices from the OpenRouter model list, 27 November 2026.</div>
+</section>
+
+<section aria-labelledby="cov-h">
+  <div class="stack">
+    <div class="eyebrow">Document type coverage</div>
+    <h2 id="cov-h">What this benchmark does and does not test</h2>
+    <p>Demo day brings a zip of mixed files. No public benchmark with published SOTA contains native Office files, so those formats are not scored here. Test them on your own documents.</p>
+    <div class="legend">
+      <span><span class="dot y">●</span> covered</span>
+      <span><span class="dot p">◐</span> partly</span>
+      <span><span class="dot n">–</span> not covered</span>
+      <span><span class="dot q">?</span> confirm after download</span>
+    </div>
+  </div>
+  <div class="tbl-wrap">
+    <table class="cov">
+      <thead><tr><th>Document / question type</th><th class="c">ViDoRe HR</th><th class="c">ViDoRe CS</th><th class="c">CRAG</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="4">Pages</td></tr>
+        <tr><td>PDF pages (image + extracted text)</td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot n">–</span></td></tr>
+        <tr><td>Tables</td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot p">◐</span></td><td class="c"><span class="dot p">◐</span></td></tr>
+        <tr><td>Charts and infographics</td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot p">◐</span></td><td class="c"><span class="dot n">–</span></td></tr>
+        <tr><td>Figures and diagrams</td><td class="c"><span class="dot p">◐</span></td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot n">–</span></td></tr>
+        <tr><td>Equations and code</td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot n">–</span></td></tr>
+        <tr><td>HTML web pages</td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot y">●</span></td></tr>
+        <tr class="grp"><td colspan="4">Question types</td></tr>
+        <tr><td>Answer spread over several pages</td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot y">●</span></td></tr>
+        <tr><td>Numerical / compare / enumerate</td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot y">●</span></td><td class="c"><span class="dot y">●</span></td></tr>
+        <tr><td>Unanswerable / false premise</td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot y">●</span></td></tr>
+        <tr><td>Time-sensitive facts</td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot y">●</span></td></tr>
+        <tr><td>Many distractor documents</td><td class="c"><span class="dot p">◐</span></td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot y">●</span></td></tr>
+        <tr class="grp"><td colspan="4">Not covered by any pack</td></tr>
+        <tr><td>DOCX, PPTX, XLSX, CSV, JSON, Markdown, TXT</td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot n">–</span></td></tr>
+        <tr><td>Scanned pages without a text layer</td><td class="c"><span class="dot q">?</span></td><td class="c"><span class="dot q">?</span></td><td class="c"><span class="dot n">–</span></td></tr>
+        <tr><td>Standalone images (labels, receipts), nested zips</td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot n">–</span></td><td class="c"><span class="dot n">–</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="diag-h">
+  <div class="stack">
+    <div class="eyebrow">Reading your results</div>
+    <h2 id="diag-h">Which layer broke</h2>
+    <p>Every ViDoRe question gets exactly one tag. The share of each tag tells you where to spend your next week.</p>
+  </div>
+  <div class="diag">
+    <div><h3>Retrieval miss</h3><p class="rule">L1 <span class="fail">fail</span></p><p>No gold page in your top 10. Fix search, chunking or parsing first; a better model will not help.</p></div>
+    <div><h3>Generation miss</h3><p class="rule">L1 <span class="pass">pass</span> · L2 <span class="fail">fail</span></p><p>The model had the right page and still got it wrong. Work on the prompt, the model, or what you send (text vs page image).</p></div>
+    <div><h3>Integration miss</h3><p class="rule">L1 <span class="pass">pass</span> · L2 <span class="pass">pass</span> · L3 <span class="fail">fail</span></p><p>Each part works alone, the whole does not: loop stopped early, time limit, context too long, answer cut off.</p></div>
+  </div>
+</section>
+
+<section aria-labelledby="rules-h">
+  <div class="stack">
+    <div class="eyebrow">Fair comparison</div>
+    <h2 id="rules-h">Rules every run follows</h2>
+  </div>
+  <ol class="rules">
+    <li><strong>Benchmarks are test sets, never tuning sets.</strong> Tune on your own data; run the benchmark only to measure. Demo day uses documents nobody has seen.</li>
+    <li><strong>The papers' judges, for everyone.</strong> ViDoRe: GPT-5.2, medium reasoning, the paper's judge prompt. CRAG: average of a gpt-3.5-turbo and a Llama 3 70B-class judge with CRAG's scoring (the exact 2024 versions are no longer offered). The harness calls them with the class key, so no one grades their own run.</li>
+    <li><strong>One fixed sample for everyone.</strong> Official run: 100 HR + 100 CS ViDoRe questions and 400 CRAG questions, stratified by type, seed and ids in the repo; retrieval always uses all 533. <code>--full</code> runs every question for close-margin claims.</li>
+    <li><strong>Run on your demo Pi.</strong> Latency and health count only from the device you demo on.</li>
+    <li><strong>One official run per person, with error bars.</strong> Published numbers are single runs too. The report gives each score with its 95% interval, so small differences are not over-read.</li>
+  </ol>
+  <div class="stack">
+    <h3>One result line per question</h3>
+    <p>The format of <code>answers.jsonl</code>; the report is built from it.</p>
+  </div>
+<pre>{"student": "2024-00000", "commit": "d934200", "pack": "vidore_hr", "qid": "hr-0412",
+ "axis": 3, "repeat": 1,
+ "retrieved": ["doc_07#p14", "doc_07#p15", "doc_02#p3"],
+ "answer": "The gap narrowed between 2018 and 2023.",
+ "cited": ["doc_07#p14"],
+ "judge": {"model": "openai/gpt-5.2", "label": "correct"},
+ "latency_ms": {"retrieve": 180, "first_token": 2100, "total": 6400},
+ "usage": {"in": 9800, "out": 1200, "usd": 0.0022},
+ "device": "rpi4-4gb", "peak_temp_c": 71.5, "throttled": false}</pre>
+</section>
+
+<section aria-labelledby="open-h">
+  <div class="stack">
+    <div class="eyebrow">Status</div>
+    <h2 id="open-h">Open before the first class run</h2>
+  </div>
+  <ul class="open-list">
+    <li>Reproduce the CRAG Task 1 GPT-4 Turbo row (7.7%) with our judges, to show how close our CRAG scores sit to the paper's.</li>
+    <li>Measure the CRAG pack after stripping scripts and styles; target about 200 MB for the full public test (the sample needs ~60 MB, but <code>--full</code> needs all of it).</li>
+    <li>Draw and publish the stratified sample: 100 HR, 100 CS, 400 CRAG question ids and the seed.</li>
+    <li>Decide the ViDoRe pair (HR + CS, or HR + Pharma), set up the class judge key with a cap, then build and test the harness on one Pi 4.</li>
+  </ul>
+</section>
+
+<footer>
+  <p>Dataset sizes and licenses from Hugging Face; prices from the OpenRouter model list. Both checked 27 November 2026.</p>
+  <ul>
+    <li><a href="https://huggingface.co/datasets/vidore/vidore_v3_hr">ViDoRe V3 HR</a> · <a href="https://huggingface.co/datasets/vidore/vidore_v3_computer_science">ViDoRe V3 Computer Science</a> · <a href="https://arxiv.org/html/2601.08620v2">ViDoRe V3 paper</a></li>
+    <li><a href="https://huggingface.co/blog/nvidia/nemotron-colembed-v2">NVIDIA Nemotron ColEmbed V2 post</a> · <a href="https://blogs.vultr.com/vidore-v3">Vultr ViDoRe V3 post</a> · <a href="https://www.tekta.ai/ai-research-papers/vidore-v3-multimodal-rag-benchmark-2026">ViDoRe V3 analysis (tekta.ai)</a></li>
+    <li><a href="https://arxiv.org/abs/2406.04744">CRAG paper</a> · <a href="https://github.com/facebookresearch/CRAG">CRAG repo</a> · <a href="https://arxiv.org/html/2410.00005v1">KDD Cup 2024 winning solution</a></li>
+    <li><a href="https://openrouter.ai/models">OpenRouter models and prices</a></li>
+  </ul>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var A = {
+    hybrid: {
+      s: "Chunks of extracted text, searched by keywords, vectors or both.",
+      l1: "Index the page markdown that ships with ViDoRe. Return your top chunks mapped to their pages; duplicates collapse to the first rank.",
+      l2: "Use the gold pages' markdown in place of your search results, in your usual prompt.",
+      l3: "Run as normal. Cite the pages of the chunks your answer used."
+    },
+    visual: {
+      s: "Pages stored as images and searched with a vision embedding model.",
+      l1: "Your results are already pages: return them directly. This is the setting the ViDoRe leaderboard was built for.",
+      l2: "Pass the gold page images to your vision-language model. Expect 1.5–2× the input tokens of text.",
+      l3: "CRAG pages are HTML: render them or fall back to text."
+    },
+    agent: {
+      s: "A model that calls tools (search, SQL, web) in a loop before answering.",
+      l1: "Return the pages from your first search call. The report also shows the union over all calls, so the loop's gain is visible.",
+      l2: "The harness disables your tools and puts the gold pages in the first message.",
+      l3: "Run with your normal round and time limits. Rounds per question are logged; they explain most latency and cost."
+    },
+    long: {
+      s: "No retriever: whole documents go into the model's context.",
+      l1: "Not applicable. Return the pages your answer cites; they are scored as a proxy.",
+      l2: "Same as your normal run when the gold pages are the whole input.",
+      l3: "The 32k-token cap per question applies. Say how you split the CS textbooks (over 600 pages each)."
+    },
+    graph: {
+      s: "Entities and relations extracted into a graph, searched by traversal plus text.",
+      l1: "Map every node or community summary you return back to the pages it came from.",
+      l2: "Skip the graph and take the gold pages, so graph errors do not count against the generator.",
+      l3: "Graph building usually needs LLM calls at ingest; those tokens count under axis 5 and are not in the estimate above."
+    }
+  };
+  var buttons = document.querySelectorAll(".arch-buttons button");
+  function show(key) {
+    var a = A[key]; if (!a) return;
+    document.getElementById("arch-summary").textContent = a.s;
+    document.getElementById("arch-l1").textContent = a.l1;
+    document.getElementById("arch-l2").textContent = a.l2;
+    document.getElementById("arch-l3").textContent = a.l3;
+    buttons.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.arch === key ? "true" : "false"); });
+    try { localStorage.setItem("crb-arch", key); } catch (e) {}
+  }
+  buttons.forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.arch); }); });
+  var start = "hybrid";
+  try { var saved = localStorage.getItem("crb-arch"); if (saved && A[saved]) start = saved; } catch (e) {}
+  show(start);
+})();
+</script>
