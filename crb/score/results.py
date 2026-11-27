@@ -293,6 +293,8 @@ def build(run_dir: Path, judge: bool = True, mode: str = "official", judge_model
                     cts = (questions.get(pack, {}).get(q, {}).get("content_type")) or ["Unknown"]
                     if isinstance(cts, str):
                         cts = [cts]
+                    # ViDoRe labels some evidence "N/A (if relevance=0)"; that is not a content type.
+                    cts = [c for c in cts if not str(c).strip().upper().startswith("N/A")] or ["Unknown"]
                     for ct in cts:
                         by_ct.setdefault(str(ct), []).append(1.0 if vlabel[(3, q)] == "Correct" else 0.0)
                 m["by_content_type"] = {ct: {"acc": _r2(100 * sum(v) / len(v)), "n": len(v), "correct": int(sum(v))}
@@ -369,7 +371,7 @@ def build(run_dir: Path, judge: bool = True, mode: str = "official", judge_model
     if not metrics["latency"]["ingest"] and "ingest" not in session:
         notes.append("Ingest time was not recorded in run.json.")
     if mode == "smoke":
-        notes.append("Practice run: cheap judge and small sample. Not comparable to published results.")
+        notes.append("Practice run: cheap judge and small sample. Not comparable to published results, so ranks are hidden.")
     if judge_model:
         notes.append(f"Scored with the judge {judge_model}, not the papers' judges: not comparable.")
 
@@ -383,7 +385,11 @@ def build(run_dir: Path, judge: bool = True, mode: str = "official", judge_model
         if isinstance(v, Mapping) and v.get("ok") is False:
             notes.append(f"Ingest of {p_} failed" + (f": {v['error']}" if v.get("error") else "") + ".")
 
-    ranks = compute_ranks(metrics)
+    if mode == "smoke":
+        # A 10-question practice sample can land anywhere in a published table; a rank from it misleads.
+        ranks = {}
+    else:
+        ranks = compute_ranks(metrics)
     results = {
         "session": session, "mode": mode, "comparable": comparable, "status": status or None,
         "judge": {"ran": bool(judge), "has_judgments": judged_any, "vidore_model": vidore_model,
