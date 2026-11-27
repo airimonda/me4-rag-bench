@@ -41,7 +41,7 @@ import requests
 NAME = "crb-baseline"
 VERSION = "1.0"
 CACHE_DIR = Path(os.environ.get("CRB_BASELINE_CACHE", "~/.cache/crb/baseline")).expanduser()
-CONTEXT_CAP = 12_000          # characters of context sent to the model
+CONTEXT_CAP = 20_000          # characters of context sent to the model (5 ViDoRe pages average ~15,500)
 E2E_PAGES = 5
 WEB_CHUNK = 1_500
 WEB_TOP = 6
